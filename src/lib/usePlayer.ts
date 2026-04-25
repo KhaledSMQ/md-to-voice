@@ -25,9 +25,21 @@ type Options = {
   speed: number
   onActiveWord: (wIdx: number) => void
   onChunkChange?: (chunkIdx: number) => void
+  /**
+   * After chunks are (re)built, set the starting chunk to the one that contains
+   * this global word index (per-document resume). null = from first chunk.
+   */
+  resumeAtWordIdx?: number | null
 }
 
-export function usePlayer({ chunks, voice, speed, onActiveWord, onChunkChange }: Options) {
+export function usePlayer({
+  chunks,
+  voice,
+  speed,
+  onActiveWord,
+  onChunkChange,
+  resumeAtWordIdx = null,
+}: Options) {
   const [status, setStatus] = useState<PlayerStatus>('idle')
   const [device, setDevice] = useState<Device | null>(null)
   const [voices, setVoices] = useState<VoiceInfo[]>([])
@@ -44,8 +56,8 @@ export function usePlayer({ chunks, voice, speed, onActiveWord, onChunkChange }:
   const playRequestedRef = useRef<boolean>(false)
   const lastEmittedWordRef = useRef<number>(-1)
 
-  const optionsRef = useRef({ voice, speed, onActiveWord, onChunkChange, chunks })
-  optionsRef.current = { voice, speed, onActiveWord, onChunkChange, chunks }
+  const optionsRef = useRef({ voice, speed, onActiveWord, onChunkChange, chunks, resumeAtWordIdx })
+  optionsRef.current = { voice, speed, onActiveWord, onChunkChange, chunks, resumeAtWordIdx }
 
   const releaseAudio = useCallback((): void => {
     if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
@@ -78,6 +90,24 @@ export function usePlayer({ chunks, voice, speed, onActiveWord, onChunkChange }:
     resetPlayback()
     optionsRef.current.onActiveWord(-1)
   }, [chunks, resetPlayback])
+
+  useEffect(() => {
+    if (chunks.length === 0) {
+      cursorRef.current = 0
+      return
+    }
+    if (resumeAtWordIdx == null || resumeAtWordIdx < 0) {
+      cursorRef.current = 0
+      return
+    }
+    const all = chunks
+    const lastChunk = all[all.length - 1]
+    const endWords = lastChunk.words
+    const maxW = endWords.length > 0 ? endWords[endWords.length - 1].idx : 0
+    const w = Math.min(resumeAtWordIdx, maxW)
+    const chunkIdx = all.findIndex((c) => w >= c.startWordIdx && w < c.endWordIdx)
+    cursorRef.current = chunkIdx >= 0 ? chunkIdx : 0
+  }, [chunks, resumeAtWordIdx])
 
   useEffect(() => {
     if (prefetchRef.current.size === 0) return

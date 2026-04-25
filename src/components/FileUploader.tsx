@@ -4,11 +4,10 @@ const ACCEPT = '.md,.markdown,.mdx,.txt,text/markdown,text/plain'
 const MAX_BYTES = 5 * 1024 * 1024
 
 type Props = {
-  currentName: string
   onFile: (name: string, text: string) => void
 }
 
-export function FileUploader({ currentName, onFile }: Props) {
+export function FileUploader({ onFile }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -94,13 +93,6 @@ export function FileUploader({ currentName, onFile }: Props) {
             e.target.value = ''
           }}
         />
-      </div>
-
-      <div className="rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2 text-xs">
-        <div className="text-ink-500">Loaded</div>
-        <div className="truncate font-mono text-ink-200" title={currentName}>
-          {currentName}
-        </div>
       </div>
 
       {error && (
