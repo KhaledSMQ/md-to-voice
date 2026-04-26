@@ -8,6 +8,8 @@ export type StoredDocument = {
   id: string
   title: string
   markdown: string
+  /** First time the document was created in this app (ms). */
+  createdAt: number
   updatedAt: number
   lastPlayedAt: number
   /** Global word index to continue playback from the chunk that contains it. Omitted = start. */
@@ -38,11 +40,13 @@ function readRaw(): StoredDocument[] {
           'markdown' in (x as object),
       )
       .map((d: any) => {
+        const updatedAt = Number(d.updatedAt) || 0
         const doc: StoredDocument = {
         id: String(d.id),
         title: String(d.title).slice(0, 200) || 'Untitled',
         markdown: String(d.markdown),
-        updatedAt: Number(d.updatedAt) || 0,
+        createdAt: Number(d.createdAt) || updatedAt,
+        updatedAt,
         lastPlayedAt: Number(d.lastPlayedAt) || 0,
         }
         if (d.resumeWordIdx != null) {
@@ -123,6 +127,39 @@ export function listDocumentsByRecency(): StoredDocument[] {
   })
 }
 
+/** All stored documents, unsorted (storage order: newest update first). */
+export function listAllDocuments(): StoredDocument[] {
+  return [...readRaw()]
+}
+
+export type RecentsSort = 'played' | 'added' | 'name'
+
+export function sortRecents(
+  documents: StoredDocument[],
+  sort: RecentsSort,
+  getDisplayTitle: (d: StoredDocument) => string,
+): StoredDocument[] {
+  const out = [...documents]
+  out.sort((a, b) => {
+    if (sort === 'name') {
+      const an = getDisplayTitle(a).toLowerCase()
+      const bn = getDisplayTitle(b).toLowerCase()
+      const c = an.localeCompare(bn, undefined, { sensitivity: 'base' })
+      if (c !== 0) return c
+      return a.id.localeCompare(b.id)
+    }
+    if (sort === 'added') {
+      const c = b.createdAt - a.createdAt
+      if (c !== 0) return c
+      return b.updatedAt - a.updatedAt
+    }
+    const p = b.lastPlayedAt - a.lastPlayedAt
+    if (p !== 0) return p
+    return b.updatedAt - a.updatedAt
+  })
+  return out
+}
+
 export function getDocumentById(id: string): StoredDocument | null {
   return readRaw().find((d) => d.id === id) ?? null
 }
@@ -152,6 +189,7 @@ export function createDocument(
     id: newId(),
     title: title || 'Untitled',
     markdown,
+    createdAt: now,
     updatedAt: now,
     lastPlayedAt: 0,
     wordCount: w.length,

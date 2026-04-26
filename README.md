@@ -7,6 +7,8 @@ A React app that turns a Markdown file into a karaoke-style read-along, fully in
 - **In-browser TTS** using [`kokoro-js`](https://www.npmjs.com/package/kokoro-js) (the 82M-parameter Kokoro model running on WebGPU or WebAssembly via Transformers.js).
 - **Word-by-word highlighting** synced to the audio, layered on top of the rendered Markdown — Unicode-aware word segmentation by [`@chenglou/pretext`](https://www.npmjs.com/package/@chenglou/pretext).
 - **No backend.** Nothing leaves your device. The TTS model is downloaded once (~160 MB) and then cached by the browser.
+- **Offline-ready PWA.** The app shell, JS, CSS, ORT WebAssembly runtime, and TTS worker are precached via a service worker, and the Hugging Face model fetches are runtime-cached, so subsequent visits work without a network.
+- **Searchable recents** with sort by **Last played**, **Date added**, or **File name**.
 
 ## How it works
 

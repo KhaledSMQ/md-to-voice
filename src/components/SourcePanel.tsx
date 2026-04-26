@@ -1,7 +1,9 @@
 import { useMemo, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { FileUploader } from './FileUploader'
+import { loadAppSettings, saveAppSettings } from '../lib/appSettings'
 import { parseDocument } from '../lib/parseDocument'
-import type { StoredDocument } from '../lib/documentStore'
+import { sortRecents, type RecentsSort, type StoredDocument } from '../lib/documentStore'
 
 type SourceTab = 'file' | 'edit'
 
@@ -32,6 +34,21 @@ function formatWhen(ts: number): string {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function recentsSortButtonLabel(s: RecentsSort): string {
+  switch (s) {
+    case 'played':
+      return 'Last played'
+    case 'added':
+      return 'Date added'
+    case 'name':
+      return 'Name A–Z'
+    default: {
+      const _e: never = s
+      return _e
+    }
+  }
 }
 
 type ResumeView = { pct: number; showBar: true } | { pct: null; showBar: false; hint: 'none' | 'stale' }
@@ -65,6 +82,57 @@ export function SourcePanel({
   const [nameEditing, setNameEditing] = useState(false)
   const [nameDraft, setNameDraft] = useState(title)
   const nameInputRef = useRef<HTMLInputElement>(null)
+  const [recentsSearch, setRecentsSearch] = useState('')
+  const [recentsSort, setRecentsSort] = useState<RecentsSort>(() => loadAppSettings().recentsSort)
+  const [sortMenuOpen, setSortMenuOpen] = useState(false)
+  const sortMenuWrapRef = useRef<HTMLDivElement>(null)
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string } | null>(null)
+  const deleteCancelRef = useRef<HTMLButtonElement>(null)
+
+  const recentsVisible = useMemo(() => {
+    const q = recentsSearch.trim().toLowerCase()
+    const getTitle = (d: StoredDocument) => (d.id === activeId ? title : d.title)
+    const filtered = q
+      ? documents.filter((d) => {
+          if (getTitle(d).toLowerCase().includes(q)) return true
+          if (d.markdown.toLowerCase().includes(q)) return true
+          return false
+        })
+      : documents
+    return sortRecents(filtered, recentsSort, getTitle)
+  }, [documents, recentsSearch, recentsSort, activeId, title])
+
+  const onRecentsSortChange = (s: RecentsSort) => {
+    setRecentsSort(s)
+    saveAppSettings({ recentsSort: s })
+    setSortMenuOpen(false)
+  }
+
+  useEffect(() => {
+    if (!sortMenuOpen) return
+    const onPointerDown = (e: PointerEvent) => {
+      if (!sortMenuWrapRef.current?.contains(e.target as Node)) setSortMenuOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSortMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown, true)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, true)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [sortMenuOpen])
+
+  useEffect(() => {
+    if (!pendingDelete) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPendingDelete(null)
+    }
+    document.addEventListener('keydown', onKey)
+    requestAnimationFrame(() => deleteCancelRef.current?.focus())
+    return () => document.removeEventListener('keydown', onKey)
+  }, [pendingDelete])
 
   const liveDoc = useMemo(() => {
     const p = parseDocument(markdown)
@@ -103,7 +171,61 @@ export function SourcePanel({
     setNameEditing(false)
   }
 
+  const deleteDialog =
+    pendingDelete &&
+    createPortal(
+      <div
+        className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+        role="presentation"
+      >
+        <button
+          type="button"
+          className="absolute inset-0 bg-ink-950/75 backdrop-blur-sm"
+          aria-label="Dismiss"
+          onClick={() => setPendingDelete(null)}
+        />
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="delete-doc-title"
+          aria-describedby="delete-doc-desc"
+          className="relative z-10 w-full max-w-sm rounded-2xl border border-white/10 bg-ink-900 p-4 shadow-2xl shadow-ink-950/80"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <h3 id="delete-doc-title" className="text-sm font-semibold text-ink-50">
+            Remove this document?
+          </h3>
+          <p id="delete-doc-desc" className="mt-2 text-sm leading-relaxed text-ink-300">
+            <span className="font-mono text-ink-200">“{pendingDelete.title}”</span> will be removed
+            from this device. This can’t be undone.
+          </p>
+          <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+            <button
+              ref={deleteCancelRef}
+              type="button"
+              onClick={() => setPendingDelete(null)}
+              className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm font-medium text-ink-200 transition hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onDeleteDocument(pendingDelete.id)
+                setPendingDelete(null)
+              }}
+              className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm font-medium text-red-200 transition hover:bg-red-500/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400/50"
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body,
+    )
+
   return (
+    <>
     <div className="space-y-5">
       <div
         className="flex gap-0.5 rounded-lg border border-white/10 bg-white/[0.03] p-0.5"
@@ -248,6 +370,88 @@ export function SourcePanel({
           </button>
         </div>
 
+        {documents.length > 0 && (
+          <div className="flex min-w-0 items-center gap-1.5">
+            <div className="relative min-w-0 flex-1">
+              <label htmlFor="recents-search" className="sr-only">
+                Search recents
+              </label>
+              <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-500">
+                <IconSearch className="h-3.5 w-3.5" />
+              </span>
+              <input
+                id="recents-search"
+                type="search"
+                value={recentsSearch}
+                onChange={(e) => setRecentsSearch(e.target.value)}
+                autoComplete="off"
+                placeholder="Search…"
+                className="w-full rounded-lg border border-white/10 bg-ink-950/40 py-1.5 pl-8 pr-2.5 text-xs text-ink-100 placeholder-ink-500 focus:outline-none focus:ring-2 focus:ring-amber-300/30"
+              />
+            </div>
+            <div className="relative shrink-0" ref={sortMenuWrapRef}>
+              <span id="recents-sort-label" className="sr-only">
+                Change sort order
+              </span>
+              <button
+                type="button"
+                id="recents-sort-trigger"
+                aria-haspopup="menu"
+                aria-expanded={sortMenuOpen}
+                aria-controls="recents-sort-menu"
+                title={`Sort: ${recentsSortButtonLabel(recentsSort)}`}
+                aria-label={`Change sort. Current: ${recentsSortButtonLabel(recentsSort)}.`}
+                onClick={() => setSortMenuOpen((o) => !o)}
+                className="grid h-8 w-8 place-items-center rounded-lg border border-white/10 bg-ink-950/40 text-ink-300 transition hover:border-white/15 hover:bg-white/[0.05] hover:text-ink-100 focus:outline-none focus:ring-2 focus:ring-amber-300/30 aria-expanded:bg-white/[0.04]"
+              >
+                <IconSortAction
+                  className={
+                    'h-3.5 w-3.5 ' + (sortMenuOpen ? 'text-amber-200/90' : '')
+                  }
+                  aria-hidden
+                />
+              </button>
+              {sortMenuOpen && (
+                <div
+                  id="recents-sort-menu"
+                  role="menu"
+                  aria-labelledby="recents-sort-label"
+                  className="absolute right-0 top-[calc(100%+4px)] z-20 min-w-[12.5rem] overflow-hidden rounded-lg border border-white/10 bg-ink-900/95 py-1 shadow-lg shadow-ink-950/60 ring-1 ring-white/5 backdrop-blur-sm"
+                >
+                  {(
+                    [
+                      { id: 'played' as const, label: 'Last played', icon: IconSortPlayed },
+                      { id: 'added' as const, label: 'Date added', icon: IconSortAdded },
+                      { id: 'name' as const, label: 'File name (A–Z)', icon: IconSortName },
+                    ] as const
+                  ).map(({ id, label, icon: Icon }) => (
+                    <button
+                      key={id}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => onRecentsSortChange(id)}
+                      className={
+                        'flex w-full items-center gap-2.5 px-2.5 py-2 text-left text-xs transition ' +
+                        (recentsSort === id
+                          ? 'bg-amber-300/10 text-amber-100'
+                          : 'text-ink-200 hover:bg-white/[0.06] hover:text-ink-50')
+                      }
+                    >
+                      <span className="shrink-0 text-ink-400" aria-hidden>
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      <span className="min-w-0 flex-1 font-medium leading-snug">{label}</span>
+                      {recentsSort === id && (
+                        <IconCheck className="h-3.5 w-3.5 shrink-0 text-amber-300/90" aria-hidden />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {documents.length === 0 ? (
           <div className="rounded-xl border border-dashed border-white/10 bg-ink-950/25 px-4 py-6 text-center">
             <p className="text-sm text-ink-300">No saved documents</p>
@@ -273,24 +477,35 @@ export function SourcePanel({
               </button>
             </div>
           </div>
+        ) : recentsVisible.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-white/10 bg-ink-950/25 px-4 py-5 text-center">
+            <p className="text-sm text-ink-300">No matches</p>
+            <p className="mt-1.5 text-xs text-ink-500">
+              Try another search, or clear the search box to see all {documents.length} document
+              {documents.length === 1 ? '' : 's'}.
+            </p>
+          </div>
         ) : (
           <ul
             className="max-h-[min(50vh,20rem)] space-y-1.5 overflow-y-auto rounded-xl border border-white/10 bg-ink-950/30 p-1.5"
             aria-label="Document history"
           >
-            {documents.map((d) => {
+            {recentsVisible.map((d) => {
               const isActive = d.id === activeId
               const displayTitle = d.id === activeId ? title : d.title
               const rv = resumeViewFromStore(d)
               const when = d.lastPlayedAt
                 ? `Played ${formatWhen(d.lastPlayedAt)}`
                 : `Saved ${formatWhen(d.updatedAt)}`
-              const resumeLabel =
-                rv.showBar
-                  ? `~${rv.pct}% read`
-                  : rv.hint === 'stale' && d.resumeWordIdx && d.resumeWordIdx > 0
+              let resumeLabel: string | null
+              if (rv.showBar) {
+                resumeLabel = `~${rv.pct}% read`
+              } else {
+                resumeLabel =
+                  'hint' in rv && rv.hint === 'stale' && d.resumeWordIdx && d.resumeWordIdx > 0
                     ? 'Resume saved'
                     : null
+              }
               return (
                 <li key={d.id} className="group">
                   <div
@@ -348,7 +563,7 @@ export function SourcePanel({
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation()
-                        onDeleteDocument(d.id)
+                        setPendingDelete({ id: d.id, title: d.id === activeId ? title : d.title })
                       }}
                       title="Remove from this device"
                       className="shrink-0 self-stretch border-l border-white/5 px-1.5 text-ink-500 transition hover:bg-red-500/10 hover:text-red-200 focus:opacity-100 focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-300/50 sm:opacity-50 sm:group-hover:opacity-100"
@@ -364,6 +579,123 @@ export function SourcePanel({
         )}
       </section>
     </div>
+    {deleteDialog}
+    </>
+  )
+}
+
+function IconSearch({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.3-4.3" />
+    </svg>
+  )
+}
+
+function IconSortPlayed({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <circle cx="12" cy="12" r="8" />
+      <path d="M10.25 8v8L16 12l-5.75-4Z" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+function IconSortAdded({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="3" y="4" width="18" height="18" rx="2" />
+      <path d="M3 10h18" />
+      <path d="M8 2v4" />
+      <path d="M16 2v4" />
+      <path d="M12 14v4" />
+      <path d="M10 16h4" />
+    </svg>
+  )
+}
+
+function IconSortName({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M4 19 8 3 12 19" />
+      <path d="M5.7 14h4.5" />
+      <path d="M15 3h6" />
+      <path d="M15 3 21 12" />
+      <path d="M15 21h6" />
+    </svg>
+  )
+}
+
+function IconSortAction({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 4v16" />
+      <path d="M8 8l4-4 4 4" />
+      <path d="M8 16l4 4 4-4" />
+    </svg>
+  )
+}
+
+function IconCheck({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.25"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
   )
 }
 

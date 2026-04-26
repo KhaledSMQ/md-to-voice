@@ -5,7 +5,7 @@ import {
   createDocument,
   deleteDocument,
   getDocumentById,
-  listDocumentsByRecency,
+  listAllDocuments,
   loadInitialDocument,
   putDocument,
   putResumeOnly,
@@ -51,7 +51,7 @@ export default function App() {
 
   const [historyKey, setHistoryKey] = useState(0)
   const documents = useMemo(
-    () => listDocumentsByRecency(),
+    () => listAllDocuments(),
     [docId, title, markdown, historyKey],
   )
 
@@ -202,7 +202,8 @@ export default function App() {
       </main>
 
       <footer className="border-t border-white/5 py-3 text-center text-xs text-ink-500">
-        Runs 100% in your browser. First load downloads ~160 MB (then cached).
+        Runs in your browser; the app shell is available offline after the first visit. TTS model (~160 MB)
+        downloads on first use and is kept in the browser cache.
       </footer>
     </div>
   )
