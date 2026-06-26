@@ -1,7 +1,7 @@
 import { useMemo, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { FileUploader } from './FileUploader'
-import { loadAppSettings, saveAppSettings } from '../lib/appSettings'
+import { loadAppSettings, saveAppSettings, FONT_SIZE_MIN, FONT_SIZE_MAX } from '../lib/appSettings'
 import { parseDocument } from '../lib/parseDocument'
 import { sortRecents, type RecentsSort, type StoredDocument } from '../lib/documentStore'
 
@@ -10,6 +10,8 @@ type SourceTab = 'file' | 'edit'
 type Props = {
   markdown: string
   onMarkdownFromEdit: (text: string) => void
+  /** Replaces entire document (e.g. paste) and clears saved playback position. */
+  onMarkdownPaste: (text: string) => void
   onFile: (name: string, text: string) => void
   title: string
   onTitleChange: (title: string) => void
@@ -20,6 +22,8 @@ type Props = {
   onSelectDocument: (id: string) => void
   onNewDocument: () => void
   onDeleteDocument: (id: string) => void
+  fontSize: number
+  onFontSizeChange: (size: number) => void
 }
 
 const tabBase =
@@ -68,6 +72,7 @@ function resumeViewFromStore(d: StoredDocument): ResumeView {
 export function SourcePanel({
   markdown,
   onMarkdownFromEdit,
+  onMarkdownPaste,
   onFile,
   title,
   onTitleChange,
@@ -78,6 +83,8 @@ export function SourcePanel({
   onSelectDocument,
   onNewDocument,
   onDeleteDocument,
+  fontSize,
+  onFontSizeChange,
 }: Props) {
   const [nameEditing, setNameEditing] = useState(false)
   const [nameDraft, setNameDraft] = useState(title)
@@ -106,6 +113,10 @@ export function SourcePanel({
     setRecentsSort(s)
     saveAppSettings({ recentsSort: s })
     setSortMenuOpen(false)
+  }
+
+  const bumpFontSize = (delta: number) => {
+    onFontSizeChange(Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, fontSize + delta)))
   }
 
   useEffect(() => {
@@ -270,9 +281,40 @@ export function SourcePanel({
 
       {sourceTab === 'edit' && (
         <div role="tabpanel" aria-labelledby="source-tab-edit" className="space-y-2">
-          <p className="text-xs text-ink-500">
-            Type or paste Markdown here; the reader and playback update as you go.
-          </p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-ink-500">
+              Type or paste Markdown here; the reader and playback update as you go.
+            </p>
+            <div
+              className="inline-flex shrink-0 items-center rounded-lg border border-white/10 bg-white/[0.04]"
+              role="group"
+              aria-label="Font size"
+            >
+              <button
+                type="button"
+                onClick={() => bumpFontSize(-1)}
+                disabled={fontSize <= FONT_SIZE_MIN}
+                title="Decrease font size"
+                aria-label="Decrease font size"
+                className="inline-flex h-7 w-6 items-center justify-center rounded-l-lg text-[11px] font-semibold text-ink-300 transition-colors hover:bg-white/[0.08] hover:text-ink-100 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50"
+              >
+                A−
+              </button>
+              <span className="min-w-[1.75rem] border-x border-white/10 px-1 text-center text-[10px] tabular-nums text-ink-400">
+                {fontSize}
+              </span>
+              <button
+                type="button"
+                onClick={() => bumpFontSize(1)}
+                disabled={fontSize >= FONT_SIZE_MAX}
+                title="Increase font size"
+                aria-label="Increase font size"
+                className="inline-flex h-7 w-6 items-center justify-center rounded-r-lg text-[11px] font-semibold text-ink-300 transition-colors hover:bg-white/[0.08] hover:text-ink-100 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50"
+              >
+                A+
+              </button>
+            </div>
+          </div>
           <label htmlFor="md-editor" className="sr-only">
             Markdown content
           </label>
@@ -281,7 +323,14 @@ export function SourcePanel({
             spellCheck={false}
             value={markdown}
             onChange={(e) => onMarkdownFromEdit(e.target.value)}
-            className="w-full min-h-[min(50vh,320px)] resize-y rounded-xl border border-white/10 bg-ink-950/50 px-3 py-2.5 text-sm font-mono text-ink-100 leading-relaxed placeholder-ink-500 focus:outline-none focus:ring-2 focus:ring-amber-300/30"
+            onPaste={(e) => {
+              const text = e.clipboardData.getData('text/plain')
+              if (!text.trim()) return
+              e.preventDefault()
+              onMarkdownPaste(text)
+            }}
+            className="w-full min-h-[min(50vh,320px)] resize-y rounded-xl border border-white/10 bg-ink-950/50 px-3 py-2.5 font-mono text-ink-100 leading-relaxed placeholder-ink-500 focus:outline-none focus:ring-2 focus:ring-amber-300/30"
+            style={{ fontSize: `${fontSize}px` }}
             placeholder="Paste or type markdown…"
           />
           <div className="text-xs text-ink-500 tabular-nums">

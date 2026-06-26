@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, type CSSProperties } from 'react'
 import { parseDocument } from '../lib/parseDocument'
 
 export type MarkdownReaderHandle = {
@@ -22,6 +22,7 @@ type Props = {
   onWordClick?: (wIdx: number) => void
   /** Merges with defaults; set full string for embedded layout in Reader shell. */
   className?: string
+  style?: CSSProperties
   /** When the playhead leaves the visible scrollport, `out` tells you if it is above or below. */
   onActiveVisibilityChange?: (v: PlayheadVisibility) => void
 }
@@ -110,7 +111,7 @@ function directionTowardPlayhead(
 }
 
 export const MarkdownReader = forwardRef<MarkdownReaderHandle, Props>(function MarkdownReader(
-  { markdown, onWordClick, className: classNameProp, onActiveVisibilityChange },
+  { markdown, onWordClick, className: classNameProp, style, onActiveVisibilityChange },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -340,7 +341,7 @@ export const MarkdownReader = forwardRef<MarkdownReaderHandle, Props>(function M
   )
 
   return (
-    <div ref={containerRef} className={classNameProp ?? DEFAULT_ROOT}>
+    <div ref={containerRef} className={classNameProp ?? DEFAULT_ROOT} style={style}>
       {parsed.reactNode}
     </div>
   )

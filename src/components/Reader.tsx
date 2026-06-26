@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MarkdownReader, type MarkdownReaderHandle, type PlayheadVisibility } from './MarkdownReader'
 import { Controls } from './Controls'
+import { ColumnResizeHandle } from './ColumnResizeHandle'
 import { usePlayer } from '../lib/usePlayer'
-import { loadAppSettings, saveAppSettings } from '../lib/appSettings'
+import { loadAppSettings, saveAppSettings, FONT_SIZE_MIN, FONT_SIZE_MAX, CONTROLS_WIDTH_MIN, CONTROLS_WIDTH_MAX, DEFAULT_APP_SETTINGS } from '../lib/appSettings'
 import { parseDocument } from '../lib/parseDocument'
 
 type Props = {
@@ -20,9 +21,13 @@ type Props = {
   onOpenPasteTab: () => void
   /** Fires whenever audio playback starts (play, resume, or seek to word). */
   onPlaybackBegan?: () => void
+  fontSize: number
+  onFontSizeChange: (size: number) => void
+  controlsWidth: number
+  onControlsWidthChange: (width: number) => void
 }
 
-const READER_MAX_H = 'max-h-[calc(100vh-200px)]'
+const READER_MAX_H = 'min-h-0 flex-1 max-h-[calc(100vh-9rem)]'
 const UI_SAVE_MS = 400
 const RESUME_DEBOUNCE_MS = 700
 
@@ -39,6 +44,10 @@ export function Reader({
   onOpenFileTab,
   onOpenPasteTab,
   onPlaybackBegan,
+  fontSize,
+  onFontSizeChange,
+  controlsWidth,
+  onControlsWidthChange,
 }: Props) {
   const readerRef = useRef<MarkdownReaderHandle>(null)
   const inlineEditorRef = useRef<HTMLTextAreaElement>(null)
@@ -65,6 +74,13 @@ export function Reader({
     const t = setTimeout(() => saveAppSettings({ voice, speed }), UI_SAVE_MS)
     return () => clearTimeout(t)
   }, [voice, speed])
+
+  const bumpFontSize = useCallback(
+    (delta: number) => {
+      onFontSizeChange(Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, fontSize + delta)))
+    },
+    [fontSize, onFontSizeChange],
+  )
 
   const scheduleResumeSave = useCallback(
     (w: number) => {
@@ -120,6 +136,16 @@ export function Reader({
   useEffect(() => {
     setResumeBannerDismissed(false)
   }, [activeDocId, openResume])
+
+  // When resume is cleared (stop, paste, new content), drop stale playback tracking.
+  useEffect(() => {
+    if (openResume > 0) return
+    if (resumeTimer.current) {
+      clearTimeout(resumeTimer.current)
+      resumeTimer.current = null
+    }
+    lastWordHeard.current = 0
+  }, [markdown, openResume])
 
   useEffect(() => {
     if (headerRenaming) return
@@ -204,6 +230,36 @@ export function Reader({
     readerRef.current?.reset()
   }, [onResumeReset])
 
+  const replaceContentAndResetPlayback = useCallback(
+    (text: string) => {
+      if (resumeTimer.current) {
+        clearTimeout(resumeTimer.current)
+        resumeTimer.current = null
+      }
+      lastWordHeard.current = 0
+      onResumeReset()
+      playerRef.current.stop()
+      readerRef.current?.reset()
+      setResumeBannerDismissed(true)
+      onMarkdownChange(text)
+    },
+    [onMarkdownChange, onResumeReset],
+  )
+
+  const handlePasteClick = useCallback(async () => {
+    try {
+      const text = await navigator.clipboard.readText()
+      if (!text.trim()) {
+        setInlineEdit(true)
+        return
+      }
+      replaceContentAndResetPlayback(text)
+      setInlineEdit(false)
+    } catch {
+      setInlineEdit(true)
+    }
+  }, [replaceContentAndResetPlayback])
+
   const prevPlayerStatus = useRef(player.status)
   useEffect(() => {
     if (player.status === 'playing' && prevPlayerStatus.current !== 'playing') {
@@ -275,9 +331,9 @@ export function Reader({
   }, [handleStop])
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
+    <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row lg:gap-0">
       <div
-        className={`flex min-w-0 min-h-[min(50vh,28rem)] flex-col rounded-xl border border-white/5 bg-white/[0.03] ${READER_MAX_H}`}
+        className={`flex min-w-0 min-h-[min(50vh,28rem)] flex-col rounded-xl border border-white/5 bg-white/[0.03] lg:min-h-0 lg:flex-1 ${READER_MAX_H}`}
       >
         <div className="flex shrink-0 items-center gap-2 border-b border-white/5 px-3 py-2">
           <span className="text-xs text-ink-500">
@@ -317,6 +373,47 @@ export function Reader({
               {sourceName}
             </button>
           )}
+          <div
+            className="inline-flex shrink-0 items-center rounded-lg border border-white/10 bg-white/[0.04]"
+            role="group"
+            aria-label="Font size"
+          >
+            <button
+              type="button"
+              onClick={() => bumpFontSize(-1)}
+              disabled={fontSize <= FONT_SIZE_MIN}
+              title="Decrease font size"
+              aria-label="Decrease font size"
+              className="inline-flex h-8 w-7 items-center justify-center rounded-l-lg text-xs font-semibold text-ink-300 transition-colors hover:bg-white/[0.08] hover:text-ink-100 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50"
+            >
+              A−
+            </button>
+            <span
+              className="hidden min-w-[2rem] border-x border-white/10 px-1 text-center text-[10px] tabular-nums text-ink-400 sm:inline"
+              aria-hidden
+            >
+              {fontSize}
+            </span>
+            <button
+              type="button"
+              onClick={() => bumpFontSize(1)}
+              disabled={fontSize >= FONT_SIZE_MAX}
+              title="Increase font size"
+              aria-label="Increase font size"
+              className="inline-flex h-8 w-7 items-center justify-center rounded-r-lg text-xs font-semibold text-ink-300 transition-colors hover:bg-white/[0.08] hover:text-ink-100 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50"
+            >
+              A+
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => void handlePasteClick()}
+            title="Paste from clipboard (replaces content, resets playback)"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-ink-300 transition-colors hover:border-white/20 hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50"
+          >
+            <span className="sr-only">Paste from clipboard</span>
+            <PasteIcon />
+          </button>
           <button
             type="button"
             onClick={() => setInlineEdit((v) => !v)}
@@ -343,13 +440,20 @@ export function Reader({
             spellCheck={false}
             value={markdown}
             onChange={(e) => onMarkdownChange(e.target.value)}
+            onPaste={(e) => {
+              const text = e.clipboardData.getData('text/plain')
+              if (!text.trim()) return
+              e.preventDefault()
+              replaceContentAndResetPlayback(text)
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
                 e.preventDefault()
                 setInlineEdit(false)
               }
             }}
-            className="w-full min-h-0 flex-1 resize-none overflow-y-auto border-0 bg-ink-950/40 px-4 py-4 font-mono text-sm leading-[1.65] text-ink-100 caret-amber-200 [tab-size:2] selection:bg-amber-300/25 focus:outline-none"
+            className="w-full min-h-0 flex-1 resize-none overflow-y-auto border-0 bg-ink-950/40 px-4 py-4 font-mono leading-[1.65] text-ink-100 caret-amber-200 [tab-size:2] selection:bg-amber-300/25 focus:outline-none"
+            style={{ fontSize: `${fontSize}px` }}
             aria-label="Markdown source (inline editor)"
             placeholder="Write or paste Markdown…"
           />
@@ -358,6 +462,7 @@ export function Reader({
             onOpenFileTab={onOpenFileTab}
             onOpenPasteTab={onOpenPasteTab}
             onWriteHere={() => setInlineEdit(true)}
+            onPasteFromClipboard={() => void handlePasteClick()}
           />
         ) : (
           <div
@@ -417,6 +522,7 @@ export function Reader({
               onActiveVisibilityChange={onActiveVisibilityChange}
               ref={readerRef}
               className="markdown-body min-h-0 min-w-0 h-full max-h-full flex-1 overflow-y-auto px-5 py-4"
+              style={{ ['--reader-font-size' as string]: `${fontSize}px`, fontSize: `${fontSize}px` }}
             />
             {!playhead.inView &&
               (player.status === 'playing' || player.status === 'paused') &&
@@ -441,7 +547,21 @@ export function Reader({
         )}
       </div>
 
-      <aside className="space-y-3">
+      <ColumnResizeHandle
+        value={controlsWidth}
+        min={CONTROLS_WIDTH_MIN}
+        max={CONTROLS_WIDTH_MAX}
+        onChange={onControlsWidthChange}
+        onReset={() => onControlsWidthChange(DEFAULT_APP_SETTINGS.controlsWidth)}
+        panelSide="start"
+        ariaLabel="Resize controls panel"
+        className="hidden lg:block"
+      />
+
+      <aside
+        className="min-w-0 w-full space-y-3 lg:shrink-0 lg:w-[var(--controls-width)]"
+        style={{ ['--controls-width' as string]: `${controlsWidth}px` }}
+      >
         <Controls
           status={player.status}
           device={player.device}
@@ -515,10 +635,12 @@ function ReaderEmptyState({
   onOpenFileTab,
   onOpenPasteTab,
   onWriteHere,
+  onPasteFromClipboard,
 }: {
   onOpenFileTab: () => void
   onOpenPasteTab: () => void
   onWriteHere: () => void
+  onPasteFromClipboard: () => void
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-6 py-8 text-center">
@@ -557,6 +679,13 @@ function ReaderEmptyState({
         </button>
         <button
           type="button"
+          onClick={onPasteFromClipboard}
+          className="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-medium text-ink-100 transition hover:bg-white/10"
+        >
+          Paste
+        </button>
+        <button
+          type="button"
           onClick={onOpenPasteTab}
           className="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-medium text-ink-100 transition hover:bg-white/10"
         >
@@ -591,6 +720,27 @@ function PenIcon() {
     >
       <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3Z" />
       <path d="m15 5 4 4" />
+    </svg>
+  )
+}
+
+function PasteIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      width={18}
+      height={18}
+      className="shrink-0"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M15 2H9a1 1 0 0 0-1 1v2c0 .6.4 1 1 1h6c.6 0 1-.4 1-1V3a1 1 0 0 0-1-1Z" />
+      <path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2" />
     </svg>
   )
 }

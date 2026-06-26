@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Reader } from './components/Reader'
 import { SourcePanel } from './components/SourcePanel'
+import { ColumnResizeHandle } from './components/ColumnResizeHandle'
 import {
   createDocument,
   deleteDocument,
@@ -13,6 +14,13 @@ import {
   touchPlayed,
   type StoredDocument,
 } from './lib/documentStore'
+import {
+  loadAppSettings,
+  saveAppSettings,
+  SIDEBAR_WIDTH_MIN,
+  SIDEBAR_WIDTH_MAX,
+  DEFAULT_APP_SETTINGS,
+} from './lib/appSettings'
 
 const SAMPLE_MD = `# Welcome to **md to voice**
 
@@ -33,6 +41,7 @@ Try changing the voice on the right, then hit play. You can pause with the **spa
 `
 
 const SAVE_MS = 500
+const LAYOUT_SAVE_MS = 400
 
 let initialDocCache: ReturnType<typeof loadInitialDocument> | null = null
 function getInitialDoc() {
@@ -44,6 +53,9 @@ function getInitialDoc() {
 
 export default function App() {
   const [sourceTab, setSourceTab] = useState<'file' | 'edit'>('file')
+  const [sidebarWidth, setSidebarWidth] = useState(() => loadAppSettings().sidebarWidth)
+  const [controlsWidth, setControlsWidth] = useState(() => loadAppSettings().controlsWidth)
+  const [fontSize, setFontSize] = useState(() => loadAppSettings().fontSize)
   const [docId, setDocId] = useState(() => getInitialDoc().id)
   const [title, setTitle] = useState(() => getInitialDoc().title)
   const [markdown, setMarkdown] = useState(() => getInitialDoc().markdown)
@@ -61,6 +73,14 @@ export default function App() {
     }, SAVE_MS)
     return () => clearTimeout(t)
   }, [docId, title, markdown])
+
+  useEffect(() => {
+    const t = setTimeout(
+      () => saveAppSettings({ sidebarWidth, controlsWidth, fontSize }),
+      LAYOUT_SAVE_MS,
+    )
+    return () => clearTimeout(t)
+  }, [sidebarWidth, controlsWidth, fontSize])
 
   const applyDocument = useCallback((d: StoredDocument) => {
     setDocId(d.id)
@@ -88,6 +108,11 @@ export default function App() {
     setOpenResume(0)
     setHistoryKey((k) => k + 1)
   }, [])
+
+  const replaceMarkdownContent = useCallback((text: string) => {
+    onResumeReset()
+    setMarkdown(text)
+  }, [onResumeReset])
 
   const selectDocument = useCallback(
     (id: string) => {
@@ -142,9 +167,9 @@ export default function App() {
   }, [docId])
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="border-b border-white/5 bg-ink-950/40 backdrop-blur">
-        <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
+    <div className="flex h-screen flex-col overflow-hidden">
+      <header className="border-b border-white/5 bg-ink-950/40 backdrop-blur shrink-0">
+        <div className="w-full px-4 sm:px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-amber-300 to-pink-400 grid place-items-center text-ink-950 font-black">
               md
@@ -165,14 +190,18 @@ export default function App() {
         </div>
       </header>
 
-      <main className="flex-1 mx-auto max-w-7xl w-full px-6 py-6 grid gap-6 lg:grid-cols-[320px_1fr]">
-        <aside className="space-y-4">
+      <main className="flex-1 w-full min-h-0 py-3 sm:py-4 flex flex-col gap-4 lg:flex-row lg:gap-0">
+        <aside
+          className="space-y-4 min-w-0 w-full lg:shrink-0 lg:w-[var(--sidebar-width)] px-3 sm:px-4 lg:px-0 lg:pl-4"
+          style={{ ['--sidebar-width' as string]: `${sidebarWidth}px` }}
+        >
           <SourcePanel
             markdown={markdown}
             title={title}
             onTitleChange={setTitle}
             onFile={onFile}
             onMarkdownFromEdit={setMarkdown}
+            onMarkdownPaste={replaceMarkdownContent}
             sourceTab={sourceTab}
             onSourceTab={setSourceTab}
             documents={documents}
@@ -180,10 +209,23 @@ export default function App() {
             onSelectDocument={selectDocument}
             onNewDocument={newDocument}
             onDeleteDocument={onDeleteDocument}
+            fontSize={fontSize}
+            onFontSizeChange={setFontSize}
           />
         </aside>
 
-        <section className="min-w-0">
+        <ColumnResizeHandle
+          value={sidebarWidth}
+          min={SIDEBAR_WIDTH_MIN}
+          max={SIDEBAR_WIDTH_MAX}
+          onChange={setSidebarWidth}
+          onReset={() => setSidebarWidth(DEFAULT_APP_SETTINGS.sidebarWidth)}
+          panelSide="end"
+          ariaLabel="Resize sidebar"
+          className="hidden lg:block"
+        />
+
+        <section className="min-w-0 flex-1 flex flex-col px-3 sm:px-4 lg:px-0 lg:pr-4">
           <Reader
             activeDocId={docId}
             openResume={openResume}
@@ -197,11 +239,15 @@ export default function App() {
             onOpenFileTab={() => setSourceTab('file')}
             onOpenPasteTab={() => setSourceTab('edit')}
             onPlaybackBegan={onPlaybackBegan}
+            fontSize={fontSize}
+            onFontSizeChange={setFontSize}
+            controlsWidth={controlsWidth}
+            onControlsWidthChange={setControlsWidth}
           />
         </section>
       </main>
 
-      <footer className="border-t border-white/5 py-3 text-center text-xs text-ink-500">
+      <footer className="border-t border-white/5 py-3 text-center text-xs text-ink-500 shrink-0">
         Runs in your browser; the app shell is available offline after the first visit. TTS model (~160 MB)
         downloads on first use and is kept in the browser cache.
       </footer>
