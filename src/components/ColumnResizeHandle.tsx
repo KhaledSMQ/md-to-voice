@@ -8,8 +8,8 @@ type Props = {
   onReset?: () => void
   /**
    * Which side of the resizable panel this handle sits on.
-   * `start` — handle is before the panel; drag right grows width.
-   * `end` — handle is after the panel; drag left grows width.
+   * `start` — handle is before the panel; drag left grows width.
+   * `end` — handle is after the panel; drag right grows width.
    */
   panelSide: 'start' | 'end'
   ariaLabel: string
@@ -47,7 +47,7 @@ export function ColumnResizeHandle({
         ev.preventDefault()
         const delta = ev.clientX - startX
         const next =
-          panelSide === 'start' ? startW + delta : startW - delta
+          panelSide === 'start' ? startW - delta : startW + delta
         onChangeRef.current(clamp(next))
       }
 
@@ -75,16 +75,16 @@ export function ColumnResizeHandle({
       let next = valueRef.current
       const step = e.shiftKey ? 32 : 8
       if (panelSide === 'start') {
-        if (e.key === 'ArrowLeft') next -= step
-        else if (e.key === 'ArrowRight') next += step
+        if (e.key === 'ArrowLeft') next += step
+        else if (e.key === 'ArrowRight') next -= step
         else if (e.key === 'Home') next = min
         else if (e.key === 'End') next = max
         else return
       } else {
-        if (e.key === 'ArrowLeft') next += step
-        else if (e.key === 'ArrowRight') next -= step
-        else if (e.key === 'Home') next = max
-        else if (e.key === 'End') next = min
+        if (e.key === 'ArrowLeft') next -= step
+        else if (e.key === 'ArrowRight') next += step
+        else if (e.key === 'Home') next = min
+        else if (e.key === 'End') next = max
         else return
       }
       e.preventDefault()
