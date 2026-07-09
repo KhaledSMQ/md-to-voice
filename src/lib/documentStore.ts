@@ -1,8 +1,19 @@
-import { parseDocument } from './parseDocument'
-
-const STORAGE_KEY = 'md-to-voice:v1:documents'
-const ACTIVE_KEY = 'md-to-voice:v1:activeId'
+const DB_NAME = 'md-to-voice'
+const DB_VERSION = 1
+const STORE = 'documents'
+const META_STORE = 'meta'
+const ACTIVE_KEY = 'activeId'
 const MAX_DOCS = 50
+
+const LEGACY_DOCS_KEY = 'md-to-voice:v1:documents'
+const LEGACY_ACTIVE_KEY = 'md-to-voice:v1:activeId'
+
+export class StorageError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options)
+    this.name = 'StorageError'
+  }
+}
 
 export type StoredDocument = {
   id: string
@@ -19,84 +30,104 @@ export type StoredDocument = {
   lastWordGlobalIdx?: number
 }
 
-function canUseStorage(): boolean {
-  return typeof localStorage !== 'undefined'
+export type RecentsSort = 'played' | 'added' | 'name'
+
+export type InitialDocumentState = {
+  id: string
+  title: string
+  markdown: string
+  createdDefault: boolean
+  resumeWordIdx: number
 }
 
-function readRaw(): StoredDocument[] {
-  if (!canUseStorage()) return []
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return []
-    const p = JSON.parse(raw) as unknown
-    if (!Array.isArray(p)) return []
-    return p
-      .filter(
-        (x: unknown) =>
-          x != null &&
-          typeof x === 'object' &&
-          'id' in (x as object) &&
-          'title' in (x as object) &&
-          'markdown' in (x as object),
-      )
-      .map((d: any) => {
-        const updatedAt = Number(d.updatedAt) || 0
-        const doc: StoredDocument = {
-        id: String(d.id),
-        title: String(d.title).slice(0, 200) || 'Untitled',
-        markdown: String(d.markdown),
-        createdAt: Number(d.createdAt) || updatedAt,
-        updatedAt,
-        lastPlayedAt: Number(d.lastPlayedAt) || 0,
-        }
-        if (d.resumeWordIdx != null) {
-          const r = Math.floor(Number(d.resumeWordIdx))
-          if (Number.isFinite(r) && r >= 0) doc.resumeWordIdx = r
-        }
-        if (d.wordCount != null) {
-          const n = Math.floor(Number(d.wordCount))
-          if (Number.isFinite(n) && n >= 0) doc.wordCount = n
-        }
-        if (d.lastWordGlobalIdx != null) {
-          const n = Math.floor(Number(d.lastWordGlobalIdx))
-          if (Number.isFinite(n) && n >= 0) doc.lastWordGlobalIdx = n
-        }
-        return doc
-      })
-  } catch {
-    return []
-  }
+let dbPromise: Promise<IDBDatabase> | null = null
+let legacyCleared = false
+
+function canUseIdb(): boolean {
+  return typeof indexedDB !== 'undefined'
 }
 
-function writeRaw(docs: StoredDocument[]): void {
-  if (!canUseStorage()) return
+function clearLegacyLocalStorage(): void {
+  if (legacyCleared) return
+  legacyCleared = true
+  if (typeof localStorage === 'undefined') return
   try {
-    const trimmed = docs
-      .sort((a, b) => b.updatedAt - a.updatedAt)
-      .slice(0, MAX_DOCS)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed))
-  } catch {
-    // quota / private mode
-  }
-}
-
-function readActiveId(): string | null {
-  if (!canUseStorage()) return null
-  try {
-    return localStorage.getItem(ACTIVE_KEY)
-  } catch {
-    return null
-  }
-}
-
-function writeActiveId(id: string | null): void {
-  if (!canUseStorage()) return
-  try {
-    if (id) localStorage.setItem(ACTIVE_KEY, id)
-    else localStorage.removeItem(ACTIVE_KEY)
+    localStorage.removeItem(LEGACY_DOCS_KEY)
+    localStorage.removeItem(LEGACY_ACTIVE_KEY)
   } catch {
     // ignore
   }
+}
+
+function openDb(): Promise<IDBDatabase> {
+  if (!canUseIdb()) {
+    return Promise.reject(new StorageError('IndexedDB is not available in this browser.'))
+  }
+  if (dbPromise) return dbPromise
+  dbPromise = new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION)
+    req.onerror = () => {
+      dbPromise = null
+      reject(new StorageError('Failed to open document database.', { cause: req.error }))
+    }
+    req.onupgradeneeded = () => {
+      const db = req.result
+      if (!db.objectStoreNames.contains(STORE)) {
+        db.createObjectStore(STORE, { keyPath: 'id' })
+      }
+      if (!db.objectStoreNames.contains(META_STORE)) {
+        db.createObjectStore(META_STORE)
+      }
+    }
+    req.onsuccess = () => resolve(req.result)
+  })
+  return dbPromise
+}
+
+function reqToPromise<T>(req: IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () =>
+      reject(new StorageError('IndexedDB request failed.', { cause: req.error }))
+  })
+}
+
+function txDone(tx: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve()
+    tx.onerror = () =>
+      reject(new StorageError('IndexedDB transaction failed.', { cause: tx.error }))
+    tx.onabort = () =>
+      reject(new StorageError('IndexedDB transaction aborted.', { cause: tx.error }))
+  })
+}
+
+function isQuotaError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const e = err as { name?: string; message?: string; cause?: { name?: string } }
+  if (e.name === 'QuotaExceededError') return true
+  if (e.cause?.name === 'QuotaExceededError') return true
+  if (typeof e.message === 'string' && /quota/i.test(e.message)) return true
+  return false
+}
+
+function wrapWriteError(err: unknown): StorageError {
+  if (err instanceof StorageError) {
+    if (isQuotaError(err) || isQuotaError(err.cause)) {
+      return new StorageError(
+        'Storage is full. Remove some documents or free disk space, then try again.',
+        { cause: err },
+      )
+    }
+    return err
+  }
+  if (isQuotaError(err)) {
+    return new StorageError(
+      'Storage is full. Remove some documents or free disk space, then try again.',
+      { cause: err },
+    )
+  }
+  return new StorageError('Failed to save documents.', { cause: err })
 }
 
 function newId(): string {
@@ -104,6 +135,90 @@ function newId(): string {
     return crypto.randomUUID()
   }
   return `doc-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+}
+
+function normalizeDoc(raw: unknown): StoredDocument | null {
+  if (raw == null || typeof raw !== 'object') return null
+  const d = raw as Record<string, unknown>
+  if (typeof d.id !== 'string' || typeof d.title !== 'string' || typeof d.markdown !== 'string') {
+    return null
+  }
+  const updatedAt = Number(d.updatedAt) || 0
+  const doc: StoredDocument = {
+    id: d.id,
+    title: String(d.title).slice(0, 200) || 'Untitled',
+    markdown: String(d.markdown),
+    createdAt: Number(d.createdAt) || updatedAt,
+    updatedAt,
+    lastPlayedAt: Number(d.lastPlayedAt) || 0,
+  }
+  if (d.resumeWordIdx != null) {
+    const r = Math.floor(Number(d.resumeWordIdx))
+    if (Number.isFinite(r) && r >= 0) doc.resumeWordIdx = r
+  }
+  if (d.wordCount != null) {
+    const n = Math.floor(Number(d.wordCount))
+    if (Number.isFinite(n) && n >= 0) doc.wordCount = n
+  }
+  if (d.lastWordGlobalIdx != null) {
+    const n = Math.floor(Number(d.lastWordGlobalIdx))
+    if (Number.isFinite(n) && n >= 0) doc.lastWordGlobalIdx = n
+  }
+  return doc
+}
+
+async function readAll(): Promise<StoredDocument[]> {
+  clearLegacyLocalStorage()
+  const db = await openDb()
+  const tx = db.transaction(STORE, 'readonly')
+  const store = tx.objectStore(STORE)
+  const rows = await reqToPromise(store.getAll())
+  await txDone(tx)
+  const docs: StoredDocument[] = []
+  for (const row of rows) {
+    const n = normalizeDoc(row)
+    if (n) docs.push(n)
+  }
+  docs.sort((a, b) => b.updatedAt - a.updatedAt)
+  return docs
+}
+
+async function writeAll(docs: StoredDocument[]): Promise<void> {
+  clearLegacyLocalStorage()
+  const trimmed = [...docs]
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, MAX_DOCS)
+  try {
+    const db = await openDb()
+    const tx = db.transaction(STORE, 'readwrite')
+    const store = tx.objectStore(STORE)
+    store.clear()
+    for (const d of trimmed) store.put(d)
+    await txDone(tx)
+  } catch (err) {
+    throw wrapWriteError(err)
+  }
+}
+
+async function readActiveId(): Promise<string | null> {
+  const db = await openDb()
+  const tx = db.transaction(META_STORE, 'readonly')
+  const v = await reqToPromise(tx.objectStore(META_STORE).get(ACTIVE_KEY))
+  await txDone(tx)
+  return typeof v === 'string' ? v : null
+}
+
+async function writeActiveId(id: string | null): Promise<void> {
+  try {
+    const db = await openDb()
+    const tx = db.transaction(META_STORE, 'readwrite')
+    const store = tx.objectStore(META_STORE)
+    if (id) store.put(id, ACTIVE_KEY)
+    else store.delete(ACTIVE_KEY)
+    await txDone(tx)
+  } catch (err) {
+    throw wrapWriteError(err)
+  }
 }
 
 function pickDefaultOpen(docs: StoredDocument[], preferredId: string | null): StoredDocument | null {
@@ -116,23 +231,13 @@ function pickDefaultOpen(docs: StoredDocument[], preferredId: string | null): St
     const p = b.lastPlayedAt - a.lastPlayedAt
     if (p !== 0) return p
     return b.updatedAt - a.updatedAt
-  })[0]
+  })[0]!
 }
 
-export function listDocumentsByRecency(): StoredDocument[] {
-  return [...readRaw()].sort((a, b) => {
-    const p = b.lastPlayedAt - a.lastPlayedAt
-    if (p !== 0) return p
-    return b.updatedAt - a.updatedAt
-  })
+/** All stored documents (newest update first). */
+export async function listAllDocuments(): Promise<StoredDocument[]> {
+  return readAll()
 }
-
-/** All stored documents, unsorted (storage order: newest update first). */
-export function listAllDocuments(): StoredDocument[] {
-  return [...readRaw()]
-}
-
-export type RecentsSort = 'played' | 'added' | 'name'
 
 export function sortRecents(
   documents: StoredDocument[],
@@ -160,31 +265,34 @@ export function sortRecents(
   return out
 }
 
-export function getDocumentById(id: string): StoredDocument | null {
-  return readRaw().find((d) => d.id === id) ?? null
+export async function getDocumentById(id: string): Promise<StoredDocument | null> {
+  const db = await openDb()
+  const tx = db.transaction(STORE, 'readonly')
+  const raw = await reqToPromise(tx.objectStore(STORE).get(id))
+  await txDone(tx)
+  return normalizeDoc(raw)
 }
 
-export function saveDocument(doc: StoredDocument, setAsActive: boolean): void {
-  const all = readRaw()
+export async function setActiveId(id: string | null): Promise<void> {
+  await writeActiveId(id)
+}
+
+export async function saveDocument(doc: StoredDocument, setAsActive: boolean): Promise<void> {
+  const all = await readAll()
   const i = all.findIndex((d) => d.id === doc.id)
   if (i >= 0) all[i] = doc
   else all.push(doc)
-  writeRaw(all)
-  if (setAsActive) writeActiveId(doc.id)
+  await writeAll(all)
+  if (setAsActive) await writeActiveId(doc.id)
 }
 
-export function setActiveId(id: string | null): void {
-  writeActiveId(id)
-}
-
-export function createDocument(
+export async function createDocument(
   title: string,
   markdown: string,
   setAsActive: boolean,
-): StoredDocument {
+  meta?: { wordCount?: number; lastWordGlobalIdx?: number },
+): Promise<StoredDocument> {
   const now = Date.now()
-  const parsed = parseDocument(markdown)
-  const w = parsed.words
   const doc: StoredDocument = {
     id: newId(),
     title: title || 'Untitled',
@@ -192,43 +300,43 @@ export function createDocument(
     createdAt: now,
     updatedAt: now,
     lastPlayedAt: 0,
-    wordCount: w.length,
-    lastWordGlobalIdx: w.length > 0 ? w[w.length - 1]!.idx : 0,
   }
-  saveDocument(doc, setAsActive)
+  if (meta?.wordCount != null) doc.wordCount = meta.wordCount
+  if (meta?.lastWordGlobalIdx != null) doc.lastWordGlobalIdx = meta.lastWordGlobalIdx
+  await saveDocument(doc, setAsActive)
   return doc
 }
 
-export function touchPlayed(docId: string): void {
-  const all = readRaw()
+export async function touchPlayed(docId: string): Promise<void> {
+  const all = await readAll()
   const d = all.find((x) => x.id === docId)
   if (!d) return
   d.lastPlayedAt = Date.now()
-  writeRaw(all)
-  setActiveId(docId)
+  await writeAll(all)
+  await writeActiveId(docId)
 }
 
-export function updateDocumentText(docId: string, markdown: string): void {
-  putDocument(docId, { markdown })
-}
-
-export function updateDocumentTitle(docId: string, title: string): void {
-  putDocument(docId, { title })
-}
-
-export function putDocument(
+export async function putDocument(
   id: string,
-  patch: { title?: string; markdown?: string; resumeWordIdx?: number | null },
-): void {
-  const all = readRaw()
+  patch: {
+    title?: string
+    markdown?: string
+    resumeWordIdx?: number | null
+    wordCount?: number
+    lastWordGlobalIdx?: number
+  },
+): Promise<StoredDocument | null> {
+  const all = await readAll()
   const d = all.find((x) => x.id === id)
-  if (!d) return
+  if (!d) return null
   if (typeof patch.title === 'string') d.title = patch.title.slice(0, 200) || 'Untitled'
   if (typeof patch.markdown === 'string') {
     d.markdown = patch.markdown
-    const w = parseDocument(d.markdown).words
-    d.wordCount = w.length
-    d.lastWordGlobalIdx = w.length > 0 ? w[w.length - 1]!.idx : 0
+    if (typeof patch.wordCount === 'number') d.wordCount = patch.wordCount
+    if (typeof patch.lastWordGlobalIdx === 'number') d.lastWordGlobalIdx = patch.lastWordGlobalIdx
+  } else {
+    if (typeof patch.wordCount === 'number') d.wordCount = patch.wordCount
+    if (typeof patch.lastWordGlobalIdx === 'number') d.lastWordGlobalIdx = patch.lastWordGlobalIdx
   }
   if (Object.prototype.hasOwnProperty.call(patch, 'resumeWordIdx')) {
     if (patch.resumeWordIdx == null || patch.resumeWordIdx < 0) {
@@ -238,12 +346,13 @@ export function putDocument(
     }
   }
   d.updatedAt = Date.now()
-  writeRaw(all)
+  await writeAll(all)
+  return d
 }
 
-/** Update only resume line; does not bump `updatedAt` (avoids shuffling "recents" order). */
-export function putResumeOnly(id: string, wordIdx: number): void {
-  const all = readRaw()
+/** Update only resume line; does not bump `updatedAt`. */
+export async function putResumeOnly(id: string, wordIdx: number): Promise<void> {
+  const all = await readAll()
   const d = all.find((x) => x.id === id)
   if (!d) return
   if (wordIdx < 0) {
@@ -251,36 +360,29 @@ export function putResumeOnly(id: string, wordIdx: number): void {
   } else {
     d.resumeWordIdx = Math.floor(wordIdx)
   }
-  writeRaw(all)
+  await writeAll(all)
 }
 
-export function deleteDocument(id: string): StoredDocument | null {
-  const all = readRaw()
-  const wasActive = readActiveId() === id
+export async function deleteDocument(id: string): Promise<StoredDocument | null> {
+  const all = await readAll()
+  const wasActive = (await readActiveId()) === id
   const nextAll = all.filter((d) => d.id !== id)
   if (nextAll.length === all.length) return null
-  writeRaw(nextAll)
+  await writeAll(nextAll)
   if (!wasActive) return null
   const next = pickDefaultOpen(nextAll, null)
-  writeActiveId(next?.id ?? null)
+  await writeActiveId(next?.id ?? null)
   return next ?? null
 }
 
-export type InitialDocumentState = {
-  id: string
-  title: string
-  markdown: string
-  createdDefault: boolean
-  resumeWordIdx: number
-}
-
-export function loadInitialDocument(
+export async function loadInitialDocument(
   defaultMarkdown: string,
   defaultTitle: string,
-): InitialDocumentState {
-  const all = readRaw()
+): Promise<InitialDocumentState> {
+  clearLegacyLocalStorage()
+  const all = await readAll()
   if (all.length === 0) {
-    const d = createDocument(defaultTitle, defaultMarkdown, true)
+    const d = await createDocument(defaultTitle, defaultMarkdown, true)
     return {
       id: d.id,
       title: d.title,
@@ -289,9 +391,10 @@ export function loadInitialDocument(
       resumeWordIdx: 0,
     }
   }
-  const doc = pickDefaultOpen(all, null)
+  const preferred = await readActiveId()
+  const doc = pickDefaultOpen(all, preferred)
   if (!doc) {
-    const d = createDocument(defaultTitle, defaultMarkdown, true)
+    const d = await createDocument(defaultTitle, defaultMarkdown, true)
     return {
       id: d.id,
       title: d.title,
@@ -300,7 +403,7 @@ export function loadInitialDocument(
       resumeWordIdx: 0,
     }
   }
-  setActiveId(doc.id)
+  await writeActiveId(doc.id)
   const r = doc.resumeWordIdx
   return {
     id: doc.id,

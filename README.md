@@ -8,7 +8,7 @@ A React app that turns a Markdown file into a karaoke-style read-along, fully in
 - **Word-by-word highlighting** synced to the audio, layered on top of the rendered Markdown — Unicode-aware word segmentation by [`@chenglou/pretext`](https://www.npmjs.com/package/@chenglou/pretext).
 - **No backend.** Nothing leaves your device. The TTS model is downloaded once (~160 MB) and then cached by the browser.
 - **Offline-ready PWA.** The app shell, JS, CSS, ORT WebAssembly runtime, and TTS worker are precached via a service worker, and the Hugging Face model fetches are runtime-cached, so subsequent visits work without a network.
-- **Searchable recents** with sort by **Last played**, **Date added**, or **File name**.
+- **Documents in IndexedDB** with searchable recents, sort by **Last played**, **Date added**, or **File name**, and per-document resume.
 
 ## How it works
 
@@ -17,17 +17,18 @@ A React app that turns a Markdown file into a karaoke-style read-along, fully in
 3. `remark-rehype` converts the augmented mdast to hast, with custom handlers turning `word` nodes into `<span class="word" data-w-idx="N">…</span>` and `whitespace` nodes into plain text.
 4. The result renders as a normal styled Markdown document — headings, lists, code, tables, links, blockquotes — but every word is now individually addressable.
 5. A sentence-level chunker groups words into TTS-sized batches (3–30 words, broken at `.`/`!`/`?`).
-6. A Web Worker hosts `kokoro-js` and generates a WAV per chunk; the player plays each chunk sequentially while pre-fetching the next.
+6. A Web Worker hosts `kokoro-js` and generates a WAV per chunk; the player plays each chunk sequentially while pre-fetching the next two.
 7. Inside each chunk, a `requestAnimationFrame` loop maps `audio.currentTime` to the active word using a character-length-weighted timing curve (the same trick Pretext's "karaoke teleprompter" demo uses).
 
 ## Stack
 
 | Concern | Library |
 | --- | --- |
-| Build | Vite + React 18 + TypeScript |
-| Markdown | `react-markdown` (we drive the unified pipeline directly), `remark-gfm` |
+| Build | Vite + React 19 + TypeScript |
+| Markdown | `react-markdown` / unified pipeline, `remark-gfm` |
 | Tokenization | `@chenglou/pretext` (`prepareWithSegments`), `unist-util-visit` |
 | TTS | `kokoro-js` running in a `Worker` |
+| Persistence | IndexedDB (documents), `localStorage` (settings) |
 | Styling | Tailwind CSS |
 
 ## Run locally
@@ -41,11 +42,12 @@ Open http://localhost:5173 and drop a `.md` file on the left.
 
 > The first time you press **Play**, the browser downloads the Kokoro model (~160 MB) from the Hugging Face Hub. After that it is served from the browser cache and starts instantly.
 
-## Build
+## Build & test
 
 ```bash
 npm run build
 npm run preview
+npm test
 ```
 
 ## Keyboard shortcuts
@@ -54,6 +56,8 @@ npm run preview
 | --- | --- |
 | `Space` | Play / Pause |
 | `Esc` | Stop |
+| `[` or `←` | Previous chunk |
+| `]` or `→` | Next chunk |
 
 ## Notes & limitations
 

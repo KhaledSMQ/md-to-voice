@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 
 type Props = {
   value: number
@@ -27,10 +27,14 @@ export function ColumnResizeHandle({
   className = '',
 }: Props) {
   const valueRef = useRef(value)
-  valueRef.current = value
-
   const onChangeRef = useRef(onChange)
-  onChangeRef.current = onChange
+
+  useEffect(() => {
+    valueRef.current = value
+  }, [value])
+  useEffect(() => {
+    onChangeRef.current = onChange
+  }, [onChange])
 
   const clamp = useCallback((w: number) => Math.min(max, Math.max(min, Math.round(w))), [max, min])
 
@@ -52,68 +56,68 @@ export function ColumnResizeHandle({
       }
 
       const onUp = () => {
-        document.removeEventListener('pointermove', onMove)
-        document.removeEventListener('pointerup', onUp)
-        document.removeEventListener('pointercancel', onUp)
+        window.removeEventListener('pointermove', onMove)
+        window.removeEventListener('pointerup', onUp)
+        window.removeEventListener('pointercancel', onUp)
         document.body.style.cursor = ''
         document.body.style.userSelect = ''
-        document.body.style.touchAction = ''
       }
 
       document.body.style.cursor = 'col-resize'
       document.body.style.userSelect = 'none'
-      document.body.style.touchAction = 'none'
-      document.addEventListener('pointermove', onMove)
-      document.addEventListener('pointerup', onUp)
-      document.addEventListener('pointercancel', onUp)
+      window.addEventListener('pointermove', onMove)
+      window.addEventListener('pointerup', onUp)
+      window.addEventListener('pointercancel', onUp)
     },
     [clamp, panelSide],
   )
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
-      let next = valueRef.current
-      const step = e.shiftKey ? 32 : 8
-      if (panelSide === 'start') {
-        if (e.key === 'ArrowLeft') next += step
-        else if (e.key === 'ArrowRight') next -= step
-        else if (e.key === 'Home') next = min
-        else if (e.key === 'End') next = max
-        else return
-      } else {
-        if (e.key === 'ArrowLeft') next -= step
-        else if (e.key === 'ArrowRight') next += step
-        else if (e.key === 'Home') next = min
-        else if (e.key === 'End') next = max
-        else return
+      const step = e.shiftKey ? 24 : 8
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        const next = panelSide === 'start' ? value + step : value - step
+        onChange(clamp(next))
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        const next = panelSide === 'start' ? value - step : value + step
+        onChange(clamp(next))
+      } else if (e.key === 'Home') {
+        e.preventDefault()
+        onChange(min)
+      } else if (e.key === 'End') {
+        e.preventDefault()
+        onChange(max)
+      } else if ((e.key === 'Enter' || e.key === ' ') && onReset) {
+        e.preventDefault()
+        onReset()
       }
-      e.preventDefault()
-      onChangeRef.current(clamp(next))
     },
-    [clamp, max, min, panelSide],
+    [clamp, max, min, onChange, onReset, panelSide, value],
   )
 
   return (
     <div
       role="separator"
       aria-orientation="vertical"
-      aria-label={ariaLabel}
+      aria-valuenow={value}
       aria-valuemin={min}
       aria-valuemax={max}
-      aria-valuenow={value}
+      aria-label={ariaLabel}
       tabIndex={0}
       onPointerDown={onPointerDown}
       onKeyDown={onKeyDown}
       onDoubleClick={onReset}
-      title={`${ariaLabel} · double-click to reset`}
       className={
-        'group relative z-10 w-2 shrink-0 cursor-col-resize touch-none select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50 rounded-full ' +
+        'group relative z-10 hidden w-3 shrink-0 cursor-col-resize touch-none select-none items-stretch justify-center outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50 lg:flex ' +
         className
       }
+      title={onReset ? 'Drag to resize · double-click to reset' : 'Drag to resize'}
     >
       <span
+        className="my-auto h-10 w-1 rounded-full bg-white/10 transition-colors group-hover:bg-amber-300/50 group-active:bg-amber-300/70"
         aria-hidden
-        className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-white/5 transition-colors group-hover:bg-amber-300/40 group-active:bg-amber-300/60"
       />
     </div>
   )

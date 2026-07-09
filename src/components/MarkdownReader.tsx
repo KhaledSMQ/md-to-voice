@@ -1,5 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, type CSSProperties } from 'react'
-import { parseDocument } from '../lib/parseDocument'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react'
 
 export type MarkdownReaderHandle = {
   setActive: (wIdx: number) => void
@@ -18,7 +17,10 @@ export type PlayheadVisibility = {
 }
 
 type Props = {
-  markdown: string
+  /** Pre-parsed karaoke React tree from `parseDocument` / `useParsedDocument`. */
+  reactNode: ReactNode
+  /** Bumps word-element remapping when the underlying parse changes. */
+  parseKey: string | number
   onWordClick?: (wIdx: number) => void
   /** Merges with defaults; set full string for embedded layout in Reader shell. */
   className?: string
@@ -111,7 +113,7 @@ function directionTowardPlayhead(
 }
 
 export const MarkdownReader = forwardRef<MarkdownReaderHandle, Props>(function MarkdownReader(
-  { markdown, onWordClick, className: classNameProp, style, onActiveVisibilityChange },
+  { reactNode, parseKey, onWordClick, className: classNameProp, style, onActiveVisibilityChange },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -123,11 +125,13 @@ export const MarkdownReader = forwardRef<MarkdownReaderHandle, Props>(function M
   const programmaticScrollRef = useRef<boolean>(false)
   const lastVisNotified = useRef<string>('')
   const onWordClickRef = useRef(onWordClick)
-  onWordClickRef.current = onWordClick
   const onVisRef = useRef(onActiveVisibilityChange)
-  onVisRef.current = onActiveVisibilityChange
-
-  const parsed = useMemo(() => parseDocument(markdown), [markdown])
+  useEffect(() => {
+    onWordClickRef.current = onWordClick
+  }, [onWordClick])
+  useEffect(() => {
+    onVisRef.current = onActiveVisibilityChange
+  }, [onActiveVisibilityChange])
 
   const notifyActiveInView = useCallback(() => {
     const cb = onVisRef.current
@@ -178,7 +182,7 @@ export const MarkdownReader = forwardRef<MarkdownReaderHandle, Props>(function M
     return () => {
       wordEls.current.clear()
     }
-  }, [parsed, notifyActiveInView])
+  }, [parseKey, reactNode, notifyActiveInView])
 
   useEffect(() => {
     reducedMotionRef.current =
@@ -342,7 +346,7 @@ export const MarkdownReader = forwardRef<MarkdownReaderHandle, Props>(function M
 
   return (
     <div ref={containerRef} className={classNameProp ?? DEFAULT_ROOT} style={style}>
-      {parsed.reactNode}
+      {reactNode}
     </div>
   )
 })

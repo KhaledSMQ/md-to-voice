@@ -15,7 +15,17 @@ const ctx = self as unknown as DedicatedWorkerGlobalScope
 const MODEL_ID = 'onnx-community/Kokoro-82M-v1.0-ONNX'
 
 let ttsPromise: Promise<KokoroTTS> | null = null
-let activeReqId: number | null = null
+/** Explicitly cancelled request ids (seek / stop / voice change). */
+const cancelled = new Set<number>()
+/**
+ * Serial queue — Kokoro is not safe to run concurrently. The previous
+ * `activeReqId` gate silently dropped results when a newer generate started
+ * (prefetch), which stalled playback at sentence boundaries: chunk N finished
+ * speaking, chunk N+1's promise never resolved.
+ */
+const queue: GenerateMessage[] = []
+let draining = false
+let inFlightId: number | null = null
 
 function post(msg: WorkerOutbound, transfer: Transferable[] = []): void {
   ctx.postMessage(msg, transfer)
@@ -75,11 +85,13 @@ async function ensureModel(): Promise<KokoroTTS> {
   return ttsPromise
 }
 
-async function handleGenerate(msg: GenerateMessage): Promise<void> {
-  activeReqId = msg.reqId
+async function runGenerate(msg: GenerateMessage): Promise<void> {
   try {
     const tts = await ensureModel()
-    if (activeReqId !== msg.reqId) return
+    if (cancelled.has(msg.reqId)) {
+      cancelled.delete(msg.reqId)
+      return
+    }
     const audio = await tts.generate(msg.text, {
       voice: msg.voice as Parameters<KokoroTTS['generate']>[1] extends infer T
         ? T extends { voice?: infer V }
@@ -88,7 +100,10 @@ async function handleGenerate(msg: GenerateMessage): Promise<void> {
         : never,
       speed: msg.speed,
     })
-    if (activeReqId !== msg.reqId) return
+    if (cancelled.has(msg.reqId)) {
+      cancelled.delete(msg.reqId)
+      return
+    }
     const wav = audio.toWav()
     const durationSec = audio.audio.length / audio.sampling_rate
     const ev: GeneratedEvent = {
@@ -100,12 +115,44 @@ async function handleGenerate(msg: GenerateMessage): Promise<void> {
     }
     post(ev, [wav])
   } catch (err) {
+    if (cancelled.has(msg.reqId)) {
+      cancelled.delete(msg.reqId)
+      return
+    }
     post({
       type: 'error',
       reqId: msg.reqId,
       message: err instanceof Error ? err.message : String(err),
     })
   }
+}
+
+async function drainQueue(): Promise<void> {
+  if (draining) return
+  draining = true
+  try {
+    while (queue.length > 0) {
+      const msg = queue.shift()!
+      if (cancelled.has(msg.reqId)) {
+        cancelled.delete(msg.reqId)
+        continue
+      }
+      inFlightId = msg.reqId
+      await runGenerate(msg)
+      inFlightId = null
+    }
+  } finally {
+    draining = false
+    inFlightId = null
+    if (queue.length > 0) void drainQueue()
+  }
+}
+
+function cancelPending(): void {
+  // Drop queued work; client already rejects those promises.
+  queue.length = 0
+  // In-flight generate must not post a result after cancel.
+  if (inFlightId != null) cancelled.add(inFlightId)
 }
 
 ctx.addEventListener('message', (e: MessageEvent<WorkerInbound>) => {
@@ -117,10 +164,12 @@ ctx.addEventListener('message', (e: MessageEvent<WorkerInbound>) => {
       )
       break
     case 'generate':
-      void handleGenerate(msg)
+      cancelled.delete(msg.reqId)
+      queue.push(msg)
+      void drainQueue()
       break
     case 'cancel':
-      activeReqId = null
+      cancelPending()
       break
   }
 })

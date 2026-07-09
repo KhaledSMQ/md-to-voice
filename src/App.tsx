@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Reader } from './components/Reader'
 import { SourcePanel } from './components/SourcePanel'
 import { ColumnResizeHandle } from './components/ColumnResizeHandle'
 import {
+  StorageError,
   createDocument,
   deleteDocument,
   getDocumentById,
@@ -21,6 +22,7 @@ import {
   SIDEBAR_WIDTH_MAX,
   DEFAULT_APP_SETTINGS,
 } from './lib/appSettings'
+import { useParsedDocument, wordMetaFromParsed } from './lib/useParsedDocument'
 
 const SAMPLE_MD = `# Welcome to **md to voice**
 
@@ -40,39 +42,130 @@ Your documents and **name** are saved in the browser. On return, the **last one 
 Try changing the voice on the right, then hit play. You can pause with the **spacebar** at any time.
 `
 
-const SAVE_MS = 500
+const SAVE_MS = 400
 const LAYOUT_SAVE_MS = 400
 
-let initialDocCache: ReturnType<typeof loadInitialDocument> | null = null
-function getInitialDoc() {
-  if (!initialDocCache) {
-    initialDocCache = loadInitialDocument(SAMPLE_MD, 'sample.md')
-  }
-  return initialDocCache
-}
+type BootState =
+  | { phase: 'loading' }
+  | { phase: 'error'; message: string }
+  | {
+      phase: 'ready'
+      docId: string
+      title: string
+      markdown: string
+      openResume: number
+      documents: StoredDocument[]
+    }
 
 export default function App() {
+  const [boot, setBoot] = useState<BootState>({ phase: 'loading' })
   const [sourceTab, setSourceTab] = useState<'file' | 'edit'>('file')
   const [sidebarWidth, setSidebarWidth] = useState(() => loadAppSettings().sidebarWidth)
   const [controlsWidth, setControlsWidth] = useState(() => loadAppSettings().controlsWidth)
   const [fontSize, setFontSize] = useState(() => loadAppSettings().fontSize)
-  const [docId, setDocId] = useState(() => getInitialDoc().id)
-  const [title, setTitle] = useState(() => getInitialDoc().title)
-  const [markdown, setMarkdown] = useState(() => getInitialDoc().markdown)
-  const [openResume, setOpenResume] = useState(() => getInitialDoc().resumeWordIdx)
+  const [storageBanner, setStorageBanner] = useState<string | null>(null)
 
-  const [historyKey, setHistoryKey] = useState(0)
-  const documents = useMemo(
-    () => listAllDocuments(),
-    [docId, title, markdown, historyKey],
-  )
+  const [docId, setDocId] = useState('')
+  const [title, setTitle] = useState('')
+  const [markdown, setMarkdown] = useState('')
+  const [openResume, setOpenResume] = useState(0)
+  const [documents, setDocuments] = useState<StoredDocument[]>([])
+
+  const parsed = useParsedDocument(markdown)
+  const parsedRef = useRef(parsed)
+  const docIdRef = useRef(docId)
+  const titleRef = useRef(title)
+  const markdownRef = useRef(markdown)
 
   useEffect(() => {
+    parsedRef.current = parsed
+  }, [parsed])
+  useEffect(() => {
+    docIdRef.current = docId
+  }, [docId])
+  useEffect(() => {
+    titleRef.current = title
+  }, [title])
+  useEffect(() => {
+    markdownRef.current = markdown
+  }, [markdown])
+
+  const reportStorageError = useCallback((err: unknown) => {
+    const msg =
+      err instanceof StorageError
+        ? err.message
+        : err instanceof Error
+          ? err.message
+          : 'Failed to save documents.'
+    setStorageBanner(msg)
+  }, [])
+
+  const refreshDocuments = useCallback(async () => {
+    try {
+      const list = await listAllDocuments()
+      setDocuments(list)
+    } catch (err) {
+      reportStorageError(err)
+    }
+  }, [reportStorageError])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const initial = await loadInitialDocument(SAMPLE_MD, 'sample.md')
+        const list = await listAllDocuments()
+        if (cancelled) return
+        setDocId(initial.id)
+        setTitle(initial.title)
+        setMarkdown(initial.markdown)
+        setOpenResume(initial.resumeWordIdx)
+        setDocuments(list)
+        setBoot({
+          phase: 'ready',
+          docId: initial.id,
+          title: initial.title,
+          markdown: initial.markdown,
+          openResume: initial.resumeWordIdx,
+          documents: list,
+        })
+      } catch (err) {
+        if (cancelled) return
+        setBoot({
+          phase: 'error',
+          message: err instanceof Error ? err.message : String(err),
+        })
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (boot.phase !== 'ready') return
     const t = setTimeout(() => {
-      putDocument(docId, { title, markdown })
+      const meta = wordMetaFromParsed(parsedRef.current)
+      void putDocument(docId, {
+        title,
+        markdown,
+        wordCount: meta.wordCount,
+        lastWordGlobalIdx: meta.lastWordGlobalIdx,
+      })
+        .then((updated) => {
+          if (!updated) return
+          setDocuments((prev) => {
+            const i = prev.findIndex((d) => d.id === updated.id)
+            if (i < 0) return prev
+            const next = [...prev]
+            next[i] = { ...updated }
+            return next
+          })
+        })
+        .catch(reportStorageError)
     }, SAVE_MS)
     return () => clearTimeout(t)
-  }, [docId, title, markdown])
+  }, [boot.phase, docId, title, markdown, reportStorageError])
 
   useEffect(() => {
     const t = setTimeout(
@@ -87,84 +180,179 @@ export default function App() {
     setTitle(d.title)
     setMarkdown(d.markdown)
     setOpenResume(d.resumeWordIdx != null && d.resumeWordIdx >= 0 ? d.resumeWordIdx : 0)
-    setHistoryKey((k) => k + 1)
   }, [])
 
-  const docIdRef = useRef(docId)
-  docIdRef.current = docId
-
-  const onResumeFromPlayback = useCallback((w: number) => {
-    putResumeOnly(docIdRef.current, w)
-    setHistoryKey((k) => k + 1)
+  const patchDocInList = useCallback((id: string, patch: Partial<StoredDocument>) => {
+    setDocuments((prev) => {
+      const i = prev.findIndex((d) => d.id === id)
+      if (i < 0) return prev
+      const next = [...prev]
+      next[i] = { ...next[i]!, ...patch }
+      return next
+    })
   }, [])
 
-  const onResumeFlush = useCallback((w: number) => {
-    putResumeOnly(docIdRef.current, w)
-    setHistoryKey((k) => k + 1)
-  }, [])
-
-  const onResumeReset = useCallback(() => {
-    putResumeOnly(docIdRef.current, 0)
-    setOpenResume(0)
-    setHistoryKey((k) => k + 1)
-  }, [])
-
-  const replaceMarkdownContent = useCallback((text: string) => {
-    onResumeReset()
-    setMarkdown(text)
-  }, [onResumeReset])
-
-  const selectDocument = useCallback(
-    (id: string) => {
-      if (id === docId) return
-      putDocument(docId, { title, markdown })
-      const d = getDocumentById(id)
-      if (d) {
-        setActiveId(d.id)
-        applyDocument(d)
-      }
+  const onResumeFromPlayback = useCallback(
+    (w: number) => {
+      const id = docIdRef.current
+      void putResumeOnly(id, w)
+        .then(() => patchDocInList(id, { resumeWordIdx: w }))
+        .catch(reportStorageError)
     },
-    [docId, title, markdown, applyDocument],
+    [patchDocInList, reportStorageError],
   )
 
-  const newDocument = useCallback(() => {
-    putDocument(docId, { title, markdown })
-    const d = createDocument('Untitled.md', '#\n', true)
-    applyDocument(d)
-  }, [docId, title, markdown, applyDocument])
+  const onResumeFlush = useCallback(
+    (w: number) => {
+      const id = docIdRef.current
+      void putResumeOnly(id, w)
+        .then(() => patchDocInList(id, { resumeWordIdx: w }))
+        .catch(reportStorageError)
+    },
+    [patchDocInList, reportStorageError],
+  )
+
+  const onResumeReset = useCallback(() => {
+    const id = docIdRef.current
+    void putResumeOnly(id, 0)
+      .then(() => {
+        patchDocInList(id, { resumeWordIdx: undefined })
+        setOpenResume(0)
+      })
+      .catch(reportStorageError)
+    setOpenResume(0)
+  }, [patchDocInList, reportStorageError])
+
+  const replaceMarkdownContent = useCallback(
+    (text: string) => {
+      onResumeReset()
+      setMarkdown(text)
+    },
+    [onResumeReset],
+  )
+
+  const selectDocument = useCallback(
+    async (id: string) => {
+      if (id === docIdRef.current) return
+      const meta = wordMetaFromParsed(parsedRef.current)
+      try {
+        await putDocument(docIdRef.current, {
+          title: titleRef.current,
+          markdown: markdownRef.current,
+          wordCount: meta.wordCount,
+          lastWordGlobalIdx: meta.lastWordGlobalIdx,
+        })
+        const d = await getDocumentById(id)
+        if (d) {
+          await setActiveId(d.id)
+          applyDocument(d)
+          await refreshDocuments()
+        }
+      } catch (err) {
+        reportStorageError(err)
+      }
+    },
+    [applyDocument, refreshDocuments, reportStorageError],
+  )
+
+  const newDocument = useCallback(async () => {
+    const meta = wordMetaFromParsed(parsedRef.current)
+    try {
+      await putDocument(docIdRef.current, {
+        title: titleRef.current,
+        markdown: markdownRef.current,
+        wordCount: meta.wordCount,
+        lastWordGlobalIdx: meta.lastWordGlobalIdx,
+      })
+      const d = await createDocument('Untitled.md', '#\n', true, {
+        wordCount: 0,
+        lastWordGlobalIdx: 0,
+      })
+      applyDocument(d)
+      await refreshDocuments()
+    } catch (err) {
+      reportStorageError(err)
+    }
+  }, [applyDocument, refreshDocuments, reportStorageError])
 
   const onFile = useCallback(
-    (name: string, text: string) => {
-      putDocument(docId, { title, markdown })
-      const d = createDocument(name || 'pasted.md', text, true)
-      applyDocument(d)
+    async (name: string, text: string) => {
+      const meta = wordMetaFromParsed(parsedRef.current)
+      try {
+        await putDocument(docIdRef.current, {
+          title: titleRef.current,
+          markdown: markdownRef.current,
+          wordCount: meta.wordCount,
+          lastWordGlobalIdx: meta.lastWordGlobalIdx,
+        })
+        const d = await createDocument(name || 'pasted.md', text, true)
+        applyDocument(d)
+        await refreshDocuments()
+      } catch (err) {
+        reportStorageError(err)
+      }
     },
-    [docId, title, markdown, applyDocument],
+    [applyDocument, refreshDocuments, reportStorageError],
   )
 
   const onDeleteDocument = useCallback(
-    (id: string) => {
-      if (id !== docId) {
-        const next = deleteDocument(id)
-        void next
-        setHistoryKey((k) => k + 1)
-        return
-      }
-      const next = deleteDocument(id)
-      if (next) {
-        applyDocument(next)
-      } else {
-        const d = createDocument('Untitled.md', '#\n', true)
-        applyDocument(d)
+    async (id: string) => {
+      try {
+        if (id !== docIdRef.current) {
+          await deleteDocument(id)
+          await refreshDocuments()
+          return
+        }
+        const next = await deleteDocument(id)
+        if (next) {
+          applyDocument(next)
+        } else {
+          const d = await createDocument('Untitled.md', '#\n', true, {
+            wordCount: 0,
+            lastWordGlobalIdx: 0,
+          })
+          applyDocument(d)
+        }
+        await refreshDocuments()
+      } catch (err) {
+        reportStorageError(err)
       }
     },
-    [docId, applyDocument],
+    [applyDocument, refreshDocuments, reportStorageError],
   )
 
   const onPlaybackBegan = useCallback(() => {
-    touchPlayed(docId)
-    setHistoryKey((k) => k + 1)
-  }, [docId])
+    const id = docIdRef.current
+    void touchPlayed(id)
+      .then(() => {
+        patchDocInList(id, { lastPlayedAt: Date.now() })
+      })
+      .catch(reportStorageError)
+  }, [patchDocInList, reportStorageError])
+
+  if (boot.phase === 'loading') {
+    return (
+      <div className="flex h-screen items-center justify-center bg-ink-950 text-ink-300">
+        <p className="text-sm">Loading documents…</p>
+      </div>
+    )
+  }
+
+  if (boot.phase === 'error') {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-3 bg-ink-950 px-6 text-center">
+        <p className="text-sm font-medium text-red-200">Could not open the document library</p>
+        <p className="max-w-md text-xs text-ink-400">{boot.message}</p>
+        <button
+          type="button"
+          className="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs text-ink-100"
+          onClick={() => window.location.reload()}
+        >
+          Reload
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
@@ -190,6 +378,23 @@ export default function App() {
         </div>
       </header>
 
+      {storageBanner && (
+        <div
+          className="flex items-start justify-between gap-3 border-b border-red-500/30 bg-red-500/10 px-4 py-2 text-xs text-red-100 sm:px-6"
+          role="alert"
+        >
+          <p className="min-w-0 leading-relaxed">{storageBanner}</p>
+          <button
+            type="button"
+            className="shrink-0 rounded px-2 py-0.5 text-red-200/90 hover:bg-red-500/20"
+            onClick={() => setStorageBanner(null)}
+            aria-label="Dismiss storage error"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       <main className="flex-1 w-full min-h-0 py-3 sm:py-4 flex flex-col gap-4 lg:flex-row lg:gap-0">
         <aside
           className="space-y-4 min-w-0 w-full lg:shrink-0 lg:w-[var(--sidebar-width)] px-3 sm:px-4 lg:px-0 lg:pl-4"
@@ -199,18 +404,22 @@ export default function App() {
             markdown={markdown}
             title={title}
             onTitleChange={setTitle}
-            onFile={onFile}
+            onFile={(name, text) => void onFile(name, text)}
             onMarkdownFromEdit={setMarkdown}
             onMarkdownPaste={replaceMarkdownContent}
             sourceTab={sourceTab}
             onSourceTab={setSourceTab}
             documents={documents}
             activeId={docId}
-            onSelectDocument={selectDocument}
-            onNewDocument={newDocument}
-            onDeleteDocument={onDeleteDocument}
+            onSelectDocument={(id) => void selectDocument(id)}
+            onNewDocument={() => void newDocument()}
+            onDeleteDocument={(id) => void onDeleteDocument(id)}
             fontSize={fontSize}
             onFontSizeChange={setFontSize}
+            wordCount={parsed.words.length}
+            resumeWordIdx={
+              documents.find((d) => d.id === docId)?.resumeWordIdx ?? openResume
+            }
           />
         </aside>
 
@@ -233,6 +442,7 @@ export default function App() {
             onResumeFlush={onResumeFlush}
             onResumeReset={onResumeReset}
             markdown={markdown}
+            parsed={parsed}
             sourceName={title}
             onTitleChange={setTitle}
             onMarkdownChange={setMarkdown}

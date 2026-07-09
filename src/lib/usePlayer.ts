@@ -33,6 +33,8 @@ type Options = {
   resumeAtWordIdx?: number | null
 }
 
+const PREFETCH_DEPTH = 2
+
 export function usePlayer({
   chunks,
   voice,
@@ -48,75 +50,93 @@ export function usePlayer({
   const [progress, setProgress] = useState<LoadProgress>({})
   const [error, setError] = useState<string | null>(null)
   const [currentChunkIdx, setCurrentChunkIdx] = useState<number>(-1)
+  const [activeWordIdx, setActiveWordIdx] = useState<number>(-1)
 
   const clientRef = useRef<TTSClient | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const audioUrlRef = useRef<string | null>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
-  const gainRef = useRef<GainNode | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
-  const sourceRef = useRef<MediaElementAudioSourceNode | null>(null)
+  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null)
   const rafRef = useRef<number | null>(null)
   const cursorRef = useRef<number>(0)
   const prefetchRef = useRef<Map<number, Promise<TTSResult>>>(new Map())
   const playRequestedRef = useRef<boolean>(false)
   const lastEmittedWordRef = useRef<number>(-1)
+  const playTokenRef = useRef(0)
+  const playChunkRef = useRef<(chunkIdx: number) => Promise<void>>(async () => {})
+  /** Restart word-highlight + end-detection after pause/resume. */
+  const resumeTickRef = useRef<(() => void) | null>(null)
 
   const optionsRef = useRef({ voice, speed, volume, onActiveWord, onChunkChange, chunks, resumeAtWordIdx })
-  optionsRef.current = { voice, speed, volume, onActiveWord, onChunkChange, chunks, resumeAtWordIdx }
+  useEffect(() => {
+    optionsRef.current = { voice, speed, volume, onActiveWord, onChunkChange, chunks, resumeAtWordIdx }
+  }, [voice, speed, volume, onActiveWord, onChunkChange, chunks, resumeAtWordIdx])
 
   const disconnectSource = useCallback((): void => {
     sourceRef.current?.disconnect()
     sourceRef.current = null
   }, [])
 
-  const ensureAudioGraph = useCallback(async (): Promise<void> => {
-    if (!audioCtxRef.current) {
-      const ctx = new AudioContext()
-      const gain = ctx.createGain()
-      const analyser = ctx.createAnalyser()
-      analyser.fftSize = 256
-      analyser.smoothingTimeConstant = 0.78
-      gain.connect(analyser)
-      analyser.connect(ctx.destination)
-      audioCtxRef.current = ctx
-      gainRef.current = gain
-      analyserRef.current = analyser
-    }
-    if (audioCtxRef.current.state === 'suspended') {
-      await audioCtxRef.current.resume()
-    }
-    if (gainRef.current) {
-      gainRef.current.gain.value = optionsRef.current.volume
-    }
-  }, [])
-
-  const connectAudioElement = useCallback(
+  /**
+   * Tap the playing element for the visualiser WITHOUT createMediaElementSource.
+   * MediaElementSourceNode steals the element's output and often suppresses
+   * `ended`, which stalled multi-chunk playback. captureStream keeps normal
+   * element playback (and reliable ended) while still feeding an AnalyserNode.
+   */
+  const connectAnalyserTap = useCallback(
     async (audio: HTMLAudioElement): Promise<void> => {
-      await ensureAudioGraph()
-      const ctx = audioCtxRef.current
-      const gain = gainRef.current
-      if (!ctx || !gain) return
       disconnectSource()
-      const source = ctx.createMediaElementSource(audio)
-      source.connect(gain)
-      sourceRef.current = source
+      if (!audioCtxRef.current) {
+        const ctx = new AudioContext()
+        const analyser = ctx.createAnalyser()
+        analyser.fftSize = 256
+        analyser.smoothingTimeConstant = 0.78
+        // Analyser only — do not connect to destination (element already outputs).
+        audioCtxRef.current = ctx
+        analyserRef.current = analyser
+      }
+      if (audioCtxRef.current.state === 'suspended') {
+        await audioCtxRef.current.resume()
+      }
+      const ctx = audioCtxRef.current
+      const analyser = analyserRef.current
+      if (!ctx || !analyser) return
+      const capture = (
+        audio as HTMLAudioElement & { captureStream?: () => MediaStream }
+      ).captureStream
+      if (typeof capture !== 'function') return
+      try {
+        const stream = capture.call(audio)
+        const source = ctx.createMediaStreamSource(stream)
+        source.connect(analyser)
+        sourceRef.current = source
+      } catch {
+        // captureStream can throw if the element isn't ready — viz just stays idle.
+      }
     },
-    [ensureAudioGraph, disconnectSource],
+    [disconnectSource],
   )
 
   useEffect(() => {
-    if (gainRef.current) {
-      gainRef.current.gain.value = volume
-    }
+    const a = audioRef.current
+    if (a) a.volume = volume
   }, [volume])
 
-  const releaseAudio = useCallback((): void => {
+  const stopRaf = useCallback((): void => {
     if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
     rafRef.current = null
+  }, [])
+
+  const releaseAudio = useCallback((): void => {
+    stopRaf()
+    resumeTickRef.current = null
     disconnectSource()
     const a = audioRef.current
     if (a) {
+      a.onended = null
+      a.onpause = null
+      a.onerror = null
       a.pause()
       a.removeAttribute('src')
       a.load()
@@ -126,23 +146,38 @@ export function usePlayer({
       audioUrlRef.current = null
     }
     audioRef.current = null
-  }, [disconnectSource])
+  }, [disconnectSource, stopRaf])
 
   const resetPlayback = useCallback((): void => {
     playRequestedRef.current = false
+    playTokenRef.current += 1
     releaseAudio()
     prefetchRef.current.clear()
     clientRef.current?.cancel()
     cursorRef.current = 0
     lastEmittedWordRef.current = -1
     setCurrentChunkIdx(-1)
+    setActiveWordIdx(-1)
     setStatus((s) => (s === 'idle' || s === 'loading-model' || s === 'error' ? s : 'ready'))
   }, [releaseAudio])
 
+  // Stable fingerprint so we only reset when the TTS plan actually changes.
+  const chunksKey = `${chunks.length}:${chunks[0]?.text ?? ''}:${chunks[chunks.length - 1]?.text ?? ''}:${chunks[0]?.startWordIdx ?? -1}:${chunks[chunks.length - 1]?.endWordIdx ?? -1}`
+  const chunksKeyRef = useRef(chunksKey)
+
   useEffect(() => {
-    resetPlayback()
-    optionsRef.current.onActiveWord(-1)
-  }, [chunks, resetPlayback])
+    if (chunksKeyRef.current === chunksKey) return
+    chunksKeyRef.current = chunksKey
+    let cancelled = false
+    queueMicrotask(() => {
+      if (cancelled) return
+      resetPlayback()
+      optionsRef.current.onActiveWord(-1)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [chunksKey, resetPlayback])
 
   useEffect(() => {
     if (chunks.length === 0) {
@@ -160,7 +195,7 @@ export function usePlayer({
     const w = Math.min(resumeAtWordIdx, maxW)
     const chunkIdx = all.findIndex((c) => w >= c.startWordIdx && w < c.endWordIdx)
     cursorRef.current = chunkIdx >= 0 ? chunkIdx : 0
-  }, [chunks, resumeAtWordIdx])
+  }, [chunksKey, chunks, resumeAtWordIdx])
 
   useEffect(() => {
     if (prefetchRef.current.size === 0) return
@@ -171,15 +206,14 @@ export function usePlayer({
   useEffect(() => {
     return () => {
       releaseAudio()
-      disconnectSource()
       void audioCtxRef.current?.close()
       audioCtxRef.current = null
-      gainRef.current = null
       analyserRef.current = null
+      sourceRef.current = null
       clientRef.current?.destroy()
       clientRef.current = null
     }
-  }, [releaseAudio, disconnectSource])
+  }, [releaseAudio])
 
   const ensureClient = useCallback((): TTSClient => {
     if (clientRef.current) return clientRef.current
@@ -234,20 +268,33 @@ export function usePlayer({
     [ensureClient],
   )
 
+  const prefetchAhead = useCallback(
+    (fromIdx: number): void => {
+      for (let i = 1; i <= PREFETCH_DEPTH; i++) {
+        requestChunk(fromIdx + i)
+      }
+    },
+    [requestChunk],
+  )
+
   const prunePrefetchCache = useCallback((keepFromIdx: number): void => {
     for (const k of Array.from(prefetchRef.current.keys())) {
-      if (k < keepFromIdx) prefetchRef.current.delete(k)
+      if (k < keepFromIdx || k > keepFromIdx + PREFETCH_DEPTH) {
+        prefetchRef.current.delete(k)
+      }
     }
   }, [])
 
   const emitActive = useCallback((globalIdx: number): void => {
     if (lastEmittedWordRef.current === globalIdx) return
     lastEmittedWordRef.current = globalIdx
+    setActiveWordIdx(globalIdx)
     optionsRef.current.onActiveWord(globalIdx)
   }, [])
 
   const playChunk = useCallback(
     async (chunkIdx: number): Promise<void> => {
+      const token = playTokenRef.current
       const all = optionsRef.current.chunks
       if (chunkIdx >= all.length) {
         releaseAudio()
@@ -275,70 +322,144 @@ export function usePlayer({
         return
       }
 
-      if (cursorRef.current !== chunkIdx || !playRequestedRef.current) return
+      if (playTokenRef.current !== token || !playRequestedRef.current) return
 
-      requestChunk(chunkIdx + 1)
+      prefetchAhead(chunkIdx)
 
+      // Fresh <audio> per chunk. Play through the element directly (reliable
+      // `ended`); tap captureStream for the visualiser instead of
+      // createMediaElementSource, which was stalling after sentence breaks.
+      const prev = audioRef.current
+      if (prev) {
+        prev.onended = null
+        prev.onpause = null
+        prev.onerror = null
+        prev.pause()
+        prev.removeAttribute('src')
+        prev.load()
+      }
       if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current)
       const url = URL.createObjectURL(result.blob)
       audioUrlRef.current = url
       const audio = new Audio()
       audio.preload = 'auto'
+      audio.volume = optionsRef.current.volume
       audio.src = url
       audioRef.current = audio
-      await connectAudioElement(audio)
+
+      if (playTokenRef.current !== token || !playRequestedRef.current) return
 
       const chunk = all[chunkIdx]
       const ends = chunkWordEndTimes(chunk, result.durationSec)
+      // Prefer TTS-reported duration — blob audio.duration is often NaN/Infinity.
+      const clipDuration = Math.max(0.05, result.durationSec)
+      let advanced = false
+      let backupTimer = 0
+
+      const clearBackup = () => {
+        if (backupTimer) {
+          window.clearTimeout(backupTimer)
+          backupTimer = 0
+        }
+      }
+
+      const scheduleBackup = (remainingSec: number) => {
+        clearBackup()
+        const backupMs = Math.max(400, (remainingSec + 0.5) * 1000)
+        backupTimer = window.setTimeout(() => {
+          if (audioRef.current !== audio || playTokenRef.current !== token) return
+          if (!playRequestedRef.current || advanced) return
+          advanceToNext()
+        }, backupMs)
+      }
+
+      const advanceToNext = () => {
+        if (advanced) return
+        if (audioRef.current !== audio || playTokenRef.current !== token) return
+        if (!playRequestedRef.current) return
+        advanced = true
+        stopRaf()
+        clearBackup()
+        resumeTickRef.current = null
+        void playChunkRef.current(chunkIdx + 1)
+      }
 
       const tick = () => {
-        if (audioRef.current !== audio) return
+        if (audioRef.current !== audio || playTokenRef.current !== token) return
+        if (audio.paused && !audio.ended) return
+        if (audio.ended || audio.currentTime >= clipDuration - 0.05) {
+          advanceToNext()
+          return
+        }
         const t = audio.currentTime
         const localIdx = activeWordInChunk(ends, t)
         const globalIdx =
           localIdx >= chunk.words.length
-            ? chunk.words[chunk.words.length - 1].idx
-            : chunk.words[localIdx].idx
+            ? chunk.words[chunk.words.length - 1]!.idx
+            : chunk.words[localIdx]!.idx
         emitActive(globalIdx)
         rafRef.current = requestAnimationFrame(tick)
       }
 
-      audio.addEventListener('ended', () => {
-        if (audioRef.current !== audio) return
-        if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
-        rafRef.current = null
-        if (!playRequestedRef.current) return
-        void playChunk(chunkIdx + 1)
-      })
-
-      audio.addEventListener('play', () => {
-        if (audioRef.current !== audio) return
-        if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
+      resumeTickRef.current = () => {
+        if (advanced) return
+        if (audioRef.current !== audio || playTokenRef.current !== token) return
+        const remaining = Math.max(0.05, clipDuration - audio.currentTime)
+        scheduleBackup(remaining)
+        stopRaf()
         rafRef.current = requestAnimationFrame(tick)
-      })
+      }
 
-      audio.addEventListener('pause', () => {
-        if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
-        rafRef.current = null
-      })
+      scheduleBackup(clipDuration)
+
+      audio.onended = () => {
+        advanceToNext()
+      }
+
+      audio.onerror = () => {
+        if (advanced || playTokenRef.current !== token) return
+        // Skip a broken clip rather than freezing the whole document.
+        advanceToNext()
+      }
 
       try {
         await audio.play()
+        if (playTokenRef.current !== token || !playRequestedRef.current) return
+        setStatus('playing')
+        void connectAnalyserTap(audio)
+        stopRaf()
+        rafRef.current = requestAnimationFrame(tick)
       } catch (err) {
+        clearBackup()
+        if (playTokenRef.current !== token) return
         setError((err as Error).message)
         setStatus('error')
       }
     },
-    [requestChunk, prunePrefetchCache, releaseAudio, emitActive, connectAudioElement],
+    [
+      requestChunk,
+      prunePrefetchCache,
+      prefetchAhead,
+      releaseAudio,
+      emitActive,
+      connectAnalyserTap,
+      stopRaf,
+    ],
   )
+
+  useEffect(() => {
+    playChunkRef.current = playChunk
+  }, [playChunk])
 
   const play = useCallback(async (): Promise<void> => {
     setError(null)
-    if (status === 'paused' && audioRef.current) {
+    if (status === 'paused' && audioRef.current?.src) {
       playRequestedRef.current = true
       try {
         await audioRef.current.play()
         setStatus('playing')
+        // Pause stops the rAF end-detector; restart it or we never advance.
+        resumeTickRef.current?.()
       } catch (err) {
         setError((err as Error).message)
         setStatus('error')
@@ -358,29 +479,23 @@ export function usePlayer({
 
   const pause = useCallback((): void => {
     playRequestedRef.current = false
+    stopRaf()
     audioRef.current?.pause()
     setStatus('paused')
-  }, [])
+  }, [stopRaf])
 
   const stop = useCallback((): void => {
     playRequestedRef.current = false
+    playTokenRef.current += 1
     releaseAudio()
     cursorRef.current = 0
     lastEmittedWordRef.current = -1
     setCurrentChunkIdx(-1)
+    setActiveWordIdx(-1)
     setStatus(clientRef.current ? 'ready' : 'idle')
     optionsRef.current.onActiveWord(-1)
   }, [releaseAudio])
 
-  /**
-   * Jump playback to whichever chunk contains `wIdx` and start playing from
-   * the start of that chunk. Used by click-to-seek on the rendered text.
-   *
-   * We always restart at the chunk's first word — the TTS engine produces
-   * one audio clip per chunk, so we cannot start the audio mid-clip with
-   * accurate timing. Re-hearing a few preceding words is the right
-   * trade-off for a precise jump.
-   */
   const seekToWord = useCallback(
     async (wIdx: number): Promise<void> => {
       const all = optionsRef.current.chunks
@@ -391,9 +506,7 @@ export function usePlayer({
       if (chunkIdx < 0) return
 
       setError(null)
-      // Tear down the current clip + drop in-flight TTS work — those
-      // requests were for the old position and we don't want them to
-      // resolve on top of the new playback.
+      playTokenRef.current += 1
       releaseAudio()
       clientRef.current?.cancel()
       prefetchRef.current.clear()
@@ -412,6 +525,37 @@ export function usePlayer({
     [init, playChunk, releaseAudio],
   )
 
+  const skipChunk = useCallback(
+    async (delta: 1 | -1): Promise<void> => {
+      const all = optionsRef.current.chunks
+      if (all.length === 0) return
+      const base = cursorRef.current >= 0 ? cursorRef.current : 0
+      const next = Math.max(0, Math.min(all.length - 1, base + delta))
+      if (next === base && status === 'playing') return
+
+      setError(null)
+      playTokenRef.current += 1
+      releaseAudio()
+      clientRef.current?.cancel()
+      prefetchRef.current.clear()
+
+      cursorRef.current = next
+      lastEmittedWordRef.current = -1
+      setCurrentChunkIdx(next)
+
+      const firstWord = all[next]?.words[0]?.idx
+      if (firstWord != null) emitActive(firstWord)
+
+      await init()
+      if (clientRef.current == null) return
+
+      playRequestedRef.current = true
+      setStatus('playing')
+      void playChunk(next)
+    },
+    [status, init, playChunk, releaseAudio, emitActive],
+  )
+
   const toggle = useCallback((): void => {
     if (status === 'playing') pause()
     else void play()
@@ -424,12 +568,14 @@ export function usePlayer({
     progress,
     error,
     currentChunkIdx,
+    activeWordIdx,
     analyserRef,
     play,
     pause,
     stop,
     toggle,
     seekToWord,
+    skipChunk,
     init,
   }
 }

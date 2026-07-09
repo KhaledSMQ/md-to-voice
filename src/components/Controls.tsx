@@ -15,6 +15,8 @@ type Props = {
   error: string | null
   totalChunks: number
   currentChunkIdx: number
+  totalWords: number
+  activeWordIdx: number
   analyserRef: RefObject<AnalyserNode | null>
   onVoice: (voice: string) => void
   onSpeed: (speed: number) => void
@@ -22,6 +24,8 @@ type Props = {
   onPlay: () => void
   onPause: () => void
   onStop: () => void
+  onPrevChunk: () => void
+  onNextChunk: () => void
 }
 
 export function Controls({
@@ -35,6 +39,8 @@ export function Controls({
   error,
   totalChunks,
   currentChunkIdx,
+  totalWords,
+  activeWordIdx,
   analyserRef,
   onVoice,
   onSpeed,
@@ -42,12 +48,15 @@ export function Controls({
   onPlay,
   onPause,
   onStop,
+  onPrevChunk,
+  onNextChunk,
 }: Props) {
   const isLoading = status === 'loading-model'
   const isPlaying = status === 'playing'
   const canPause = status === 'playing'
   const canStop = status === 'playing' || status === 'paused'
   const isError = status === 'error'
+  const canSkip = totalChunks > 0 && !isLoading
   const showChunkProgress =
     (status === 'playing' || status === 'paused' || status === 'finished') && totalChunks > 0
 
@@ -67,6 +76,15 @@ export function Controls({
       ? Math.min(100, Math.max(0, (chunkNumber / totalChunks) * 100))
       : 0
 
+  const heardOrdinal =
+    activeWordIdx >= 0 && totalWords > 0
+      ? Math.min(totalWords, activeWordIdx + 1)
+      : status === 'finished'
+        ? totalWords
+        : 0
+  const wordPct =
+    totalWords > 0 ? Math.min(100, Math.max(0, (heardOrdinal / totalWords) * 100)) : 0
+
   const toggleMute = () => {
     if (isMuted) onVolume(lastVolumeRef.current)
     else onVolume(0)
@@ -77,6 +95,16 @@ export function Controls({
       <AudioVisualizer analyserRef={analyserRef} playerStatus={status} />
 
       <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onPrevChunk}
+          disabled={!canSkip}
+          className="inline-flex h-[42px] w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-ink-200 transition-all hover:border-white/20 hover:bg-white/10 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
+          title="Previous chunk (["
+          aria-label="Previous chunk"
+        >
+          <SkipPrevIcon />
+        </button>
         <button
           type="button"
           onClick={isPlaying ? onPause : onPlay}
@@ -104,6 +132,16 @@ export function Controls({
                 : status === 'finished'
                   ? 'Play again'
                   : 'Play'}
+        </button>
+        <button
+          type="button"
+          onClick={onNextChunk}
+          disabled={!canSkip}
+          className="inline-flex h-[42px] w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-ink-200 transition-all hover:border-white/20 hover:bg-white/10 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
+          title="Next chunk (])"
+          aria-label="Next chunk"
+        >
+          <SkipNextIcon />
         </button>
         <button
           type="button"
@@ -135,20 +173,36 @@ export function Controls({
       )}
 
       {showChunkProgress && (
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between text-[10px] text-ink-400">
-            <span>Playback progress</span>
-            <span className="font-mono tabular-nums text-ink-300">
-              {status === 'finished' ? totalChunks : chunkNumber} / {totalChunks}
-            </span>
+        <div className="space-y-2">
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-[10px] text-ink-400">
+              <span>Words</span>
+              <span className="font-mono tabular-nums text-ink-300">
+                {heardOrdinal} / {totalWords}
+              </span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/5">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-amber-300/90 to-pink-400/90 transition-[width] duration-300 ease-out"
+                style={{ width: `${status === 'finished' ? 100 : wordPct}%` }}
+              />
+            </div>
           </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/5">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-amber-300/90 to-pink-400/90 transition-[width] duration-500 ease-out"
-              style={{
-                width: `${status === 'finished' ? 100 : chunkPct}%`,
-              }}
-            />
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-[10px] text-ink-400">
+              <span>Chunks</span>
+              <span className="font-mono tabular-nums text-ink-300">
+                {status === 'finished' ? totalChunks : chunkNumber} / {totalChunks}
+              </span>
+            </div>
+            <div className="h-1 w-full overflow-hidden rounded-full bg-white/5">
+              <div
+                className="h-full rounded-full bg-white/25 transition-[width] duration-500 ease-out"
+                style={{
+                  width: `${status === 'finished' ? 100 : chunkPct}%`,
+                }}
+              />
+            </div>
           </div>
         </div>
       )}
@@ -261,9 +315,15 @@ export function Controls({
       )}
 
       {status === 'idle' && (
-        <p className="text-[11px] leading-relaxed text-ink-500">
-          First play downloads the ~160 MB Kokoro model and caches it. Future loads are instant.
-        </p>
+        <div className="rounded-lg border border-amber-300/20 bg-amber-300/5 px-3 py-2.5 text-[11px] leading-relaxed text-ink-300 space-y-1.5">
+          <p className="font-medium text-amber-100">First play downloads the model</p>
+          <ul className="list-disc space-y-1 pl-4 text-ink-400">
+            <li>~160 MB Kokoro ONNX from Hugging Face (once)</li>
+            <li>WebGPU when available; otherwise WASM (slower)</li>
+            <li>Cached locally — later visits work offline</li>
+            <li>English voices only</li>
+          </ul>
+        </div>
       )}
     </div>
   )
@@ -289,6 +349,22 @@ function StopIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
       <path d="M6 6h12v12H6z" />
+    </svg>
+  )
+}
+
+function SkipPrevIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+      <path d="M6 6h2v12H6zm3.5 6 8.5 6V6z" />
+    </svg>
+  )
+}
+
+function SkipNextIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+      <path d="M16 6h2v12h-2zM5.5 18l8.5-6-8.5-6z" />
     </svg>
   )
 }
