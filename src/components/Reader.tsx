@@ -65,15 +65,16 @@ export function Reader({
 
   const [voice, setVoice] = useState(() => loadAppSettings().voice)
   const [speed, setSpeed] = useState(() => loadAppSettings().speed)
+  const [volume, setVolume] = useState(() => loadAppSettings().volume)
   const [playhead, setPlayhead] = useState<PlayheadVisibility>({ inView: true, out: null })
   const [resumeBannerDismissed, setResumeBannerDismissed] = useState(false)
   const lastWordHeard = useRef(0)
   const resumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    const t = setTimeout(() => saveAppSettings({ voice, speed }), UI_SAVE_MS)
+    const t = setTimeout(() => saveAppSettings({ voice, speed, volume }), UI_SAVE_MS)
     return () => clearTimeout(t)
-  }, [voice, speed])
+  }, [voice, speed, volume])
 
   const bumpFontSize = useCallback(
     (delta: number) => {
@@ -204,6 +205,7 @@ export function Reader({
     chunks: docInfo.chunks,
     voice,
     speed,
+    volume,
     onActiveWord,
     resumeAtWordIdx,
   })
@@ -324,16 +326,19 @@ export function Reader({
         playerRef.current.toggle()
       } else if (e.code === 'Escape') {
         handleStop()
+      } else if ((e.metaKey || e.ctrlKey) && e.key === 'v') {
+        e.preventDefault()
+        void handlePasteClick()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [handleStop])
+  }, [handleStop, handlePasteClick])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row lg:gap-0">
       <div
-        className={`flex min-w-0 min-h-[min(50vh,28rem)] flex-col rounded-xl border border-white/5 bg-white/[0.03] lg:min-h-0 lg:flex-1 ${READER_MAX_H}`}
+        className={`flex min-w-0 min-h-[min(50vh,28rem)] flex-col panel-card lg:min-h-0 lg:flex-1 ${READER_MAX_H}`}
       >
         <div className="flex shrink-0 items-center gap-2 border-b border-white/5 px-3 py-2">
           <span className="text-xs text-ink-500">
@@ -568,18 +573,21 @@ export function Reader({
           voices={player.voices}
           voice={voice}
           speed={speed}
+          volume={volume}
           progress={player.progress}
           error={player.error}
           totalChunks={docInfo.chunks.length}
           currentChunkIdx={player.currentChunkIdx}
+          analyserRef={player.analyserRef}
           onVoice={setVoice}
           onSpeed={setSpeed}
+          onVolume={setVolume}
           onPlay={player.play}
           onPause={player.pause}
           onStop={handleStop}
         />
 
-        <div className="rounded-xl border border-white/5 bg-white/[0.03] p-3 text-xs space-y-1">
+        <div className="panel-card p-3 text-xs space-y-1.5">
           <div className="flex items-center justify-between">
             <span className="text-ink-400">Source</span>
             <span className="font-mono text-ink-200 truncate max-w-[180px]" title={sourceName}>
@@ -596,7 +604,7 @@ export function Reader({
           </div>
         </div>
 
-        <div className="rounded-xl border border-white/5 bg-white/[0.03] p-3 text-[11px] text-ink-400 leading-relaxed">
+        <div className="panel-card p-3 text-[11px] text-ink-400 leading-relaxed">
           <kbd className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-ink-200">Space</kbd>{' '}
           play / pause ·{' '}
           <kbd className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-ink-200">Esc</kbd>{' '}

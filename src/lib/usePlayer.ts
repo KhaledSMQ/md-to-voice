@@ -23,6 +23,7 @@ type Options = {
   chunks: Chunk[]
   voice: string
   speed: number
+  volume: number
   onActiveWord: (wIdx: number) => void
   onChunkChange?: (chunkIdx: number) => void
   /**
@@ -36,6 +37,7 @@ export function usePlayer({
   chunks,
   voice,
   speed,
+  volume,
   onActiveWord,
   onChunkChange,
   resumeAtWordIdx = null,
@@ -50,18 +52,69 @@ export function usePlayer({
   const clientRef = useRef<TTSClient | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const audioUrlRef = useRef<string | null>(null)
+  const audioCtxRef = useRef<AudioContext | null>(null)
+  const gainRef = useRef<GainNode | null>(null)
+  const analyserRef = useRef<AnalyserNode | null>(null)
+  const sourceRef = useRef<MediaElementAudioSourceNode | null>(null)
   const rafRef = useRef<number | null>(null)
   const cursorRef = useRef<number>(0)
   const prefetchRef = useRef<Map<number, Promise<TTSResult>>>(new Map())
   const playRequestedRef = useRef<boolean>(false)
   const lastEmittedWordRef = useRef<number>(-1)
 
-  const optionsRef = useRef({ voice, speed, onActiveWord, onChunkChange, chunks, resumeAtWordIdx })
-  optionsRef.current = { voice, speed, onActiveWord, onChunkChange, chunks, resumeAtWordIdx }
+  const optionsRef = useRef({ voice, speed, volume, onActiveWord, onChunkChange, chunks, resumeAtWordIdx })
+  optionsRef.current = { voice, speed, volume, onActiveWord, onChunkChange, chunks, resumeAtWordIdx }
+
+  const disconnectSource = useCallback((): void => {
+    sourceRef.current?.disconnect()
+    sourceRef.current = null
+  }, [])
+
+  const ensureAudioGraph = useCallback(async (): Promise<void> => {
+    if (!audioCtxRef.current) {
+      const ctx = new AudioContext()
+      const gain = ctx.createGain()
+      const analyser = ctx.createAnalyser()
+      analyser.fftSize = 256
+      analyser.smoothingTimeConstant = 0.78
+      gain.connect(analyser)
+      analyser.connect(ctx.destination)
+      audioCtxRef.current = ctx
+      gainRef.current = gain
+      analyserRef.current = analyser
+    }
+    if (audioCtxRef.current.state === 'suspended') {
+      await audioCtxRef.current.resume()
+    }
+    if (gainRef.current) {
+      gainRef.current.gain.value = optionsRef.current.volume
+    }
+  }, [])
+
+  const connectAudioElement = useCallback(
+    async (audio: HTMLAudioElement): Promise<void> => {
+      await ensureAudioGraph()
+      const ctx = audioCtxRef.current
+      const gain = gainRef.current
+      if (!ctx || !gain) return
+      disconnectSource()
+      const source = ctx.createMediaElementSource(audio)
+      source.connect(gain)
+      sourceRef.current = source
+    },
+    [ensureAudioGraph, disconnectSource],
+  )
+
+  useEffect(() => {
+    if (gainRef.current) {
+      gainRef.current.gain.value = volume
+    }
+  }, [volume])
 
   const releaseAudio = useCallback((): void => {
     if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
     rafRef.current = null
+    disconnectSource()
     const a = audioRef.current
     if (a) {
       a.pause()
@@ -73,7 +126,7 @@ export function usePlayer({
       audioUrlRef.current = null
     }
     audioRef.current = null
-  }, [])
+  }, [disconnectSource])
 
   const resetPlayback = useCallback((): void => {
     playRequestedRef.current = false
@@ -118,10 +171,15 @@ export function usePlayer({
   useEffect(() => {
     return () => {
       releaseAudio()
+      disconnectSource()
+      void audioCtxRef.current?.close()
+      audioCtxRef.current = null
+      gainRef.current = null
+      analyserRef.current = null
       clientRef.current?.destroy()
       clientRef.current = null
     }
-  }, [releaseAudio])
+  }, [releaseAudio, disconnectSource])
 
   const ensureClient = useCallback((): TTSClient => {
     if (clientRef.current) return clientRef.current
@@ -228,6 +286,7 @@ export function usePlayer({
       audio.preload = 'auto'
       audio.src = url
       audioRef.current = audio
+      await connectAudioElement(audio)
 
       const chunk = all[chunkIdx]
       const ends = chunkWordEndTimes(chunk, result.durationSec)
@@ -270,7 +329,7 @@ export function usePlayer({
         setStatus('error')
       }
     },
-    [requestChunk, prunePrefetchCache, releaseAudio, emitActive],
+    [requestChunk, prunePrefetchCache, releaseAudio, emitActive, connectAudioElement],
   )
 
   const play = useCallback(async (): Promise<void> => {
@@ -365,6 +424,7 @@ export function usePlayer({
     progress,
     error,
     currentChunkIdx,
+    analyserRef,
     play,
     pause,
     stop,
