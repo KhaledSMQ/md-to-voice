@@ -139,6 +139,9 @@ export function SourcePanel({
             value={markdown}
             onChange={(e) => onMarkdownFromEdit(e.target.value)}
             onPaste={(e) => {
+              // Keep normal insert-at-caret paste while editing. Full replace
+              // only when the field is empty (fresh paste into a blank doc).
+              if (markdown.trim()) return
               const text = e.clipboardData.getData('text/plain')
               if (!text.trim()) return
               e.preventDefault()

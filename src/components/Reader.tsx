@@ -5,6 +5,7 @@ import { ColumnResizeHandle } from './ColumnResizeHandle'
 import { ResumeBanner } from './ResumeBanner'
 import { ReaderChrome } from './ReaderChrome'
 import { ReaderEmptyState } from './ReaderEmptyState'
+import { TeleprompterOverlay } from './TeleprompterOverlay'
 import { usePlayer } from '../lib/usePlayer'
 import {
   loadAppSettings,
@@ -69,6 +70,11 @@ export function Reader({
   const [voice, setVoice] = useState(() => loadAppSettings().voice)
   const [speed, setSpeed] = useState(() => loadAppSettings().speed)
   const [volume, setVolume] = useState(() => loadAppSettings().volume)
+  const [teleprompterMode, setTeleprompterMode] = useState(
+    () => loadAppSettings().teleprompterMode,
+  )
+  /** Session-only hide (Esc / Exit) without flipping the saved preference. */
+  const [teleprompterDismissed, setTeleprompterDismissed] = useState(false)
   const [playhead, setPlayhead] = useState<PlayheadVisibility>({ inView: true, out: null })
   const [resumeBannerDismissedKey, setResumeBannerDismissedKey] = useState<string | null>(null)
   const resumeBannerKey = `${activeDocId}:${openResume}`
@@ -77,9 +83,12 @@ export function Reader({
   const resumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    const t = setTimeout(() => saveAppSettings({ voice, speed, volume }), UI_SAVE_MS)
+    const t = setTimeout(
+      () => saveAppSettings({ voice, speed, volume, teleprompterMode }),
+      UI_SAVE_MS,
+    )
     return () => clearTimeout(t)
-  }, [voice, speed, volume])
+  }, [voice, speed, volume, teleprompterMode])
 
   const scheduleResumeSave = useCallback(
     (w: number) => {
@@ -185,6 +194,19 @@ export function Reader({
     onActiveWord,
     resumeAtWordIdx,
   })
+
+  const showTeleprompter =
+    teleprompterMode &&
+    !teleprompterDismissed &&
+    !inlineEdit &&
+    !noPlayableText &&
+    (player.status === 'playing' || player.status === 'paused')
+
+  useEffect(() => {
+    if (player.status === 'ready' || player.status === 'idle' || player.status === 'finished') {
+      setTeleprompterDismissed(false)
+    }
+  }, [player.status])
 
   const showResumeNudge =
     Boolean(resumeNudge) &&
@@ -299,12 +321,37 @@ export function Reader({
       if (e.target instanceof HTMLElement) {
         const tag = e.target.tagName
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+        if (e.target.isContentEditable) return
+      }
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'v' || e.key === 'V')) {
+        // Global paste into the active document (preview / empty state).
+        // Leave native paste alone inside editors (handled above).
+        if (inlineEdit || showTeleprompter) return
+        e.preventDefault()
+        void handlePasteClick()
+        return
       }
       if (e.code === 'Space') {
         e.preventDefault()
         playerRef.current.toggle()
       } else if (e.code === 'Escape') {
+        if (showTeleprompter) {
+          e.preventDefault()
+          setTeleprompterDismissed(true)
+          return
+        }
         handleStop()
+      } else if (e.key === 't' || e.key === 'T') {
+        const live =
+          playerRef.current.status === 'playing' || playerRef.current.status === 'paused'
+        if (!live || inlineEdit || noPlayableText) return
+        e.preventDefault()
+        if (showTeleprompter) {
+          setTeleprompterDismissed(true)
+          return
+        }
+        setTeleprompterMode(true)
+        setTeleprompterDismissed(false)
       } else if (e.key === '[' || e.code === 'ArrowLeft') {
         e.preventDefault()
         void playerRef.current.skipChunk(-1)
@@ -315,12 +362,21 @@ export function Reader({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [handleStop])
+  }, [handleStop, showTeleprompter, inlineEdit, noPlayableText, handlePasteClick])
 
   const parseKey = `${activeDocId}:${parsed.words.length}:${parsed.chunks.length}:${markdown.length}`
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row lg:gap-0">
+      {showTeleprompter && (
+        <TeleprompterOverlay
+          words={parsed.words}
+          activeWordIdx={player.activeWordIdx}
+          playing={player.status === 'playing'}
+          onWordClick={onWordClick}
+          onDismiss={() => setTeleprompterDismissed(true)}
+        />
+      )}
       <div
         className={`flex min-w-0 min-h-[min(50vh,28rem)] flex-col panel-card lg:min-h-0 lg:flex-1 ${READER_MAX_H}`}
       >
@@ -342,6 +398,9 @@ export function Reader({
             value={markdown}
             onChange={(e) => onMarkdownChange(e.target.value)}
             onPaste={(e) => {
+              // Native insert-at-caret paste. Only treat a full-document replace
+              // when the editor is empty (same as "paste into empty preview").
+              if (markdown.trim()) return
               const text = e.clipboardData.getData('text/plain')
               if (!text.trim()) return
               e.preventDefault()
@@ -452,6 +511,11 @@ export function Reader({
           onStop={handleStop}
           onPrevChunk={() => void player.skipChunk(-1)}
           onNextChunk={() => void player.skipChunk(1)}
+          teleprompterMode={teleprompterMode}
+          onTeleprompterMode={(enabled) => {
+            setTeleprompterMode(enabled)
+            if (enabled) setTeleprompterDismissed(false)
+          }}
         />
 
         <div className="panel-card p-3 text-xs space-y-1.5">
@@ -474,6 +538,10 @@ export function Reader({
         <div className="panel-card p-3 text-[11px] text-ink-400 leading-relaxed">
           <kbd className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-ink-200">Space</kbd>{' '}
           play / pause ·{' '}
+          <kbd className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-ink-200">⌘V</kbd>{' '}
+          paste ·{' '}
+          <kbd className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-ink-200">T</kbd>{' '}
+          teleprompter ·{' '}
           <kbd className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-ink-200">Esc</kbd> stop ·{' '}
           <kbd className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-ink-200">[</kbd>/
           <kbd className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-ink-200">]</kbd> prev /

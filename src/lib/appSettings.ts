@@ -10,6 +10,8 @@ export const DEFAULT_APP_SETTINGS = {
   fontSize: 16,
   sidebarWidth: 320,
   controlsWidth: 280,
+  /** Apple Lyrics–style centered teleprompter while speaking. Opt-in. */
+  teleprompterMode: false,
 } as const
 
 export const VOLUME_MIN = 0
@@ -30,6 +32,7 @@ export type AppSettings = {
   fontSize: number
   sidebarWidth: number
   controlsWidth: number
+  teleprompterMode: boolean
 }
 
 function clampVolume(n: number): number {
@@ -77,6 +80,10 @@ export function loadAppSettings(): AppSettings {
       typeof p.controlsWidth === 'number'
         ? clampControlsWidth(p.controlsWidth)
         : DEFAULT_APP_SETTINGS.controlsWidth
+    const teleprompterMode =
+      typeof p.teleprompterMode === 'boolean'
+        ? p.teleprompterMode
+        : DEFAULT_APP_SETTINGS.teleprompterMode
     return {
       voice: typeof p.voice === 'string' && p.voice.length > 0 ? p.voice : DEFAULT_APP_SETTINGS.voice,
       speed: Math.min(1.5, Math.max(0.5, sp)),
@@ -85,6 +92,7 @@ export function loadAppSettings(): AppSettings {
       fontSize,
       sidebarWidth,
       controlsWidth,
+      teleprompterMode,
     }
   } catch {
     return { ...DEFAULT_APP_SETTINGS }
@@ -110,6 +118,8 @@ export function saveAppSettings(patch: Partial<AppSettings>): void {
         typeof patch.controlsWidth === 'number'
           ? clampControlsWidth(patch.controlsWidth)
           : prev.controlsWidth,
+      teleprompterMode:
+        typeof patch.teleprompterMode === 'boolean' ? patch.teleprompterMode : prev.teleprompterMode,
     }
     if (next.speed < 0.5) next.speed = 0.5
     if (next.speed > 1.5) next.speed = 1.5

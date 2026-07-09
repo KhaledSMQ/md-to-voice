@@ -26,6 +26,8 @@ type Props = {
   onStop: () => void
   onPrevChunk: () => void
   onNextChunk: () => void
+  teleprompterMode: boolean
+  onTeleprompterMode: (enabled: boolean) => void
 }
 
 export function Controls({
@@ -50,6 +52,8 @@ export function Controls({
   onStop,
   onPrevChunk,
   onNextChunk,
+  teleprompterMode,
+  onTeleprompterMode,
 }: Props) {
   const isLoading = status === 'loading-model'
   const isPlaying = status === 'playing'
@@ -266,6 +270,41 @@ export function Controls({
             <span>1.5×</span>
           </div>
         </div>
+      </div>
+
+      <div className="space-y-2 border-t border-white/[0.06] pt-3">
+        <button
+          type="button"
+          role="switch"
+          aria-checked={teleprompterMode}
+          onClick={() => onTeleprompterMode(!teleprompterMode)}
+          className={`flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors ${
+            teleprompterMode
+              ? 'border-amber-300/35 bg-amber-300/10'
+              : 'border-white/10 bg-white/[0.03] hover:border-white/18 hover:bg-white/[0.05]'
+          }`}
+        >
+          <span
+            className={`mt-0.5 inline-flex h-5 w-9 shrink-0 items-center rounded-full border p-0.5 transition-colors ${
+              teleprompterMode
+                ? 'border-amber-300/50 bg-amber-300/30'
+                : 'border-white/15 bg-white/10'
+            }`}
+            aria-hidden
+          >
+            <span
+              className={`h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
+                teleprompterMode ? 'translate-x-3.5' : 'translate-x-0'
+              }`}
+            />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-sm font-medium text-ink-100">Teleprompter</span>
+            <span className="mt-0.5 block text-[11px] leading-snug text-ink-400">
+              Full-screen lyrics while speaking. Press T while playing to open.
+            </span>
+          </span>
+        </button>
       </div>
 
       <div className="space-y-2 border-t border-white/[0.06] pt-3">
