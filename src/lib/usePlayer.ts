@@ -58,7 +58,11 @@ export function usePlayer({
   const audioCtxRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null)
+  /** captureStream() tracks must be stopped or they keep the element alive. */
+  const captureStreamRef = useRef<MediaStream | null>(null)
   const rafRef = useRef<number | null>(null)
+  /** Chunk end backup timer — must be cleared on stop/seek/unmount. */
+  const backupTimerRef = useRef<number>(0)
   const cursorRef = useRef<number>(0)
   const prefetchRef = useRef<Map<number, Promise<TTSResult>>>(new Map())
   const playRequestedRef = useRef<boolean>(false)
@@ -76,6 +80,18 @@ export function usePlayer({
   const disconnectSource = useCallback((): void => {
     sourceRef.current?.disconnect()
     sourceRef.current = null
+    const stream = captureStreamRef.current
+    if (stream) {
+      for (const track of stream.getTracks()) track.stop()
+      captureStreamRef.current = null
+    }
+  }, [])
+
+  const clearBackupTimer = useCallback((): void => {
+    if (backupTimerRef.current) {
+      window.clearTimeout(backupTimerRef.current)
+      backupTimerRef.current = 0
+    }
   }, [])
 
   /**
@@ -111,6 +127,7 @@ export function usePlayer({
         const source = ctx.createMediaStreamSource(stream)
         source.connect(analyser)
         sourceRef.current = source
+        captureStreamRef.current = stream
       } catch {
         // captureStream can throw if the element isn't ready — viz just stays idle.
       }
@@ -130,6 +147,7 @@ export function usePlayer({
 
   const releaseAudio = useCallback((): void => {
     stopRaf()
+    clearBackupTimer()
     resumeTickRef.current = null
     disconnectSource()
     const a = audioRef.current
@@ -146,7 +164,7 @@ export function usePlayer({
       audioUrlRef.current = null
     }
     audioRef.current = null
-  }, [disconnectSource, stopRaf])
+  }, [clearBackupTimer, disconnectSource, stopRaf])
 
   const resetPlayback = useCallback((): void => {
     playRequestedRef.current = false
@@ -329,6 +347,9 @@ export function usePlayer({
       // Fresh <audio> per chunk. Play through the element directly (reliable
       // `ended`); tap captureStream for the visualiser instead of
       // createMediaElementSource, which was stalling after sentence breaks.
+      disconnectSource()
+      stopRaf()
+      clearBackupTimer()
       const prev = audioRef.current
       if (prev) {
         prev.onended = null
@@ -338,7 +359,10 @@ export function usePlayer({
         prev.removeAttribute('src')
         prev.load()
       }
-      if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current)
+      if (audioUrlRef.current) {
+        URL.revokeObjectURL(audioUrlRef.current)
+        audioUrlRef.current = null
+      }
       const url = URL.createObjectURL(result.blob)
       audioUrlRef.current = url
       const audio = new Audio()
@@ -347,26 +371,22 @@ export function usePlayer({
       audio.src = url
       audioRef.current = audio
 
-      if (playTokenRef.current !== token || !playRequestedRef.current) return
+      if (playTokenRef.current !== token || !playRequestedRef.current) {
+        releaseAudio()
+        return
+      }
 
       const chunk = all[chunkIdx]
       const ends = chunkWordEndTimes(chunk, result.durationSec)
       // Prefer TTS-reported duration — blob audio.duration is often NaN/Infinity.
       const clipDuration = Math.max(0.05, result.durationSec)
       let advanced = false
-      let backupTimer = 0
-
-      const clearBackup = () => {
-        if (backupTimer) {
-          window.clearTimeout(backupTimer)
-          backupTimer = 0
-        }
-      }
 
       const scheduleBackup = (remainingSec: number) => {
-        clearBackup()
+        clearBackupTimer()
         const backupMs = Math.max(400, (remainingSec + 0.5) * 1000)
-        backupTimer = window.setTimeout(() => {
+        backupTimerRef.current = window.setTimeout(() => {
+          backupTimerRef.current = 0
           if (audioRef.current !== audio || playTokenRef.current !== token) return
           if (!playRequestedRef.current || advanced) return
           advanceToNext()
@@ -379,7 +399,7 @@ export function usePlayer({
         if (!playRequestedRef.current) return
         advanced = true
         stopRaf()
-        clearBackup()
+        clearBackupTimer()
         resumeTickRef.current = null
         void playChunkRef.current(chunkIdx + 1)
       }
@@ -424,13 +444,16 @@ export function usePlayer({
 
       try {
         await audio.play()
-        if (playTokenRef.current !== token || !playRequestedRef.current) return
+        if (playTokenRef.current !== token || !playRequestedRef.current) {
+          releaseAudio()
+          return
+        }
         setStatus('playing')
         void connectAnalyserTap(audio)
         stopRaf()
         rafRef.current = requestAnimationFrame(tick)
       } catch (err) {
-        clearBackup()
+        clearBackupTimer()
         if (playTokenRef.current !== token) return
         setError((err as Error).message)
         setStatus('error')
@@ -444,6 +467,8 @@ export function usePlayer({
       emitActive,
       connectAnalyserTap,
       stopRaf,
+      clearBackupTimer,
+      disconnectSource,
     ],
   )
 

@@ -126,6 +126,8 @@ export const MarkdownReader = forwardRef<MarkdownReaderHandle, Props>(function M
   const lastVisNotified = useRef<string>('')
   const onWordClickRef = useRef(onWordClick)
   const onVisRef = useRef(onActiveVisibilityChange)
+  const pendingNotifyRaf = useRef<number | null>(null)
+  const notifyActiveInViewRef = useRef<() => void>(() => {})
   useEffect(() => {
     onWordClickRef.current = onWordClick
   }, [onWordClick])
@@ -139,32 +141,41 @@ export const MarkdownReader = forwardRef<MarkdownReaderHandle, Props>(function M
     const container = containerRef.current
     const idx = activeRef.current
     if (idx < 0 || !container) {
-      const payload: PlayheadVisibility = { inView: true, out: null }
-      const key = JSON.stringify(payload)
+      const key = 'in'
       if (lastVisNotified.current !== key) {
         lastVisNotified.current = key
-        cb(payload)
+        cb({ inView: true, out: null })
       }
       return
     }
     const el = wordEls.current.get(idx)
     if (!el) {
-      const payload: PlayheadVisibility = { inView: true, out: null }
-      const key = JSON.stringify(payload)
+      const key = 'in'
       if (lastVisNotified.current !== key) {
         lastVisNotified.current = key
-        cb(payload)
+        cb({ inView: true, out: null })
       }
       return
     }
     const inView = isActiveWordInView(container, el)
     const out: 'above' | 'below' | null = inView ? null : directionTowardPlayhead(container, el)
-    const payload: PlayheadVisibility = { inView, out }
-    const key = JSON.stringify(payload)
+    const key = inView ? 'in' : out === 'above' ? 'above' : 'below'
     if (lastVisNotified.current !== key) {
       lastVisNotified.current = key
-      cb(payload)
+      cb({ inView, out })
     }
+  }, [])
+
+  useEffect(() => {
+    notifyActiveInViewRef.current = notifyActiveInView
+  }, [notifyActiveInView])
+
+  const scheduleNotifyActiveInView = useCallback(() => {
+    if (pendingNotifyRaf.current != null) return
+    pendingNotifyRaf.current = requestAnimationFrame(() => {
+      pendingNotifyRaf.current = null
+      notifyActiveInViewRef.current()
+    })
   }, [])
 
   useLayoutEffect(() => {
@@ -178,11 +189,11 @@ export const MarkdownReader = forwardRef<MarkdownReaderHandle, Props>(function M
       if (Number.isFinite(idx)) map.set(idx, el)
     })
     wordEls.current = map
-    requestAnimationFrame(() => notifyActiveInView())
+    scheduleNotifyActiveInView()
     return () => {
       wordEls.current.clear()
     }
-  }, [parseKey, reactNode, notifyActiveInView])
+  }, [parseKey, reactNode, scheduleNotifyActiveInView])
 
   useEffect(() => {
     reducedMotionRef.current =
@@ -194,7 +205,7 @@ export const MarkdownReader = forwardRef<MarkdownReaderHandle, Props>(function M
       if (programmaticScrollRef.current) return
       userPauseUntilRef.current = performance.now() + USER_SCROLL_PAUSE_MS
     }
-    const onScrollOrResize = () => notifyActiveInView()
+    const onScrollOrResize = () => scheduleNotifyActiveInView()
     c.addEventListener('scroll', onScrollOrResize, { passive: true })
     window.addEventListener('resize', onScrollOrResize)
     c.addEventListener('wheel', markUserScroll, { passive: true })
@@ -208,8 +219,12 @@ export const MarkdownReader = forwardRef<MarkdownReaderHandle, Props>(function M
       c.removeEventListener('keydown', markUserScroll)
       if (scrollRafRef.current != null) cancelAnimationFrame(scrollRafRef.current)
       scrollRafRef.current = null
+      if (pendingNotifyRaf.current != null) {
+        cancelAnimationFrame(pendingNotifyRaf.current)
+        pendingNotifyRaf.current = null
+      }
     }
-  }, [notifyActiveInView])
+  }, [scheduleNotifyActiveInView])
 
   useEffect(() => {
     const c = containerRef.current
@@ -292,9 +307,9 @@ export const MarkdownReader = forwardRef<MarkdownReaderHandle, Props>(function M
     userPauseUntilRef.current = 0
     queueMicrotask(() => {
       programmaticScrollRef.current = false
-      requestAnimationFrame(() => notifyActiveInView())
+      scheduleNotifyActiveInView()
     })
-  }, [notifyActiveInView])
+  }, [scheduleNotifyActiveInView])
 
   useImperativeHandle(
     ref,
@@ -302,7 +317,7 @@ export const MarkdownReader = forwardRef<MarkdownReaderHandle, Props>(function M
       setActive(wIdx: number) {
         const prev = activeRef.current
         if (prev === wIdx) {
-          requestAnimationFrame(() => notifyActiveInView())
+          scheduleNotifyActiveInView()
           return
         }
         const map = wordEls.current
@@ -317,7 +332,7 @@ export const MarkdownReader = forwardRef<MarkdownReaderHandle, Props>(function M
           nextEl?.classList.remove('is-spoken')
         }
         activeRef.current = wIdx
-        requestAnimationFrame(() => notifyActiveInView())
+        scheduleNotifyActiveInView()
       },
       scrollToActive() {
         if (activeRef.current < 0) return
@@ -326,7 +341,7 @@ export const MarkdownReader = forwardRef<MarkdownReaderHandle, Props>(function M
       },
       scrollToActiveNow,
       recheckActiveInView: () => {
-        requestAnimationFrame(() => notifyActiveInView())
+        scheduleNotifyActiveInView()
       },
       reset() {
         const prev = activeRef.current
@@ -338,10 +353,10 @@ export const MarkdownReader = forwardRef<MarkdownReaderHandle, Props>(function M
         if (scrollRafRef.current != null) cancelAnimationFrame(scrollRafRef.current)
         scrollRafRef.current = null
         lastVisNotified.current = ''
-        requestAnimationFrame(() => notifyActiveInView())
+        scheduleNotifyActiveInView()
       },
     }),
-    [animateScroll, notifyActiveInView, scrollToActiveNow],
+    [animateScroll, scheduleNotifyActiveInView, scrollToActiveNow],
   )
 
   return (

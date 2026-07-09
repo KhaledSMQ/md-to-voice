@@ -42,12 +42,27 @@ export function TeleprompterOverlay({
   const lines = useMemo(() => groupIntoLines(words), [words])
   const maxOrdinal = Math.max(0, words.length - 1)
 
+  /** O(1) word-idx → ordinal / line lookups (avoid findIndex every active-word tick). */
+  const wordOrdinalByIdx = useMemo(() => {
+    const map = new Map<number, number>()
+    for (let i = 0; i < words.length; i++) map.set(words[i]!.idx, i)
+    return map
+  }, [words])
+
+  const lineIdxByWordIdx = useMemo(() => {
+    const map = new Map<number, number>()
+    for (let li = 0; li < lines.length; li++) {
+      for (const w of lines[li]!.words) map.set(w.idx, li)
+    }
+    return map
+  }, [lines])
+
   const liveOrdinal = useMemo(() => {
     if (words.length === 0) return 0
     if (activeWordIdx < 0) return 0
-    const i = words.findIndex((w) => w.idx === activeWordIdx)
-    return i >= 0 ? i : 0
-  }, [words, activeWordIdx])
+    const i = wordOrdinalByIdx.get(activeWordIdx)
+    return i != null ? i : 0
+  }, [words.length, activeWordIdx, wordOrdinalByIdx])
 
   const sliderValue = scrubOrdinal ?? liveOrdinal
   const progressPct = maxOrdinal > 0 ? (sliderValue / maxOrdinal) * 100 : 0
@@ -56,11 +71,9 @@ export function TeleprompterOverlay({
 
   const activeLineIdx = useMemo(() => {
     if (previewWordIdx < 0 || lines.length === 0) return 0
-    const i = lines.findIndex((line) =>
-      line.words.some((w) => w.idx === previewWordIdx),
-    )
-    return i >= 0 ? i : 0
-  }, [lines, previewWordIdx])
+    const i = lineIdxByWordIdx.get(previewWordIdx)
+    return i != null ? i : 0
+  }, [lines.length, previewWordIdx, lineIdxByWordIdx])
 
   const seekToOrdinal = (ordinal: number) => {
     const clamped = Math.max(0, Math.min(maxOrdinal, Math.round(ordinal)))
@@ -72,6 +85,11 @@ export function TeleprompterOverlay({
     const scroller = scrollerRef.current
     const el = lineRefs.current[activeLineIdx]
     if (!scroller || !el) return
+
+    // Drop stale refs when the document shrinks.
+    if (lineRefs.current.length > lines.length) {
+      lineRefs.current.length = lines.length
+    }
 
     const targetTop = () => {
       const eye = scroller.clientHeight * EYE_LINE

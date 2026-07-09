@@ -69,8 +69,11 @@ export class TTSClient {
   }
 
   destroy(): void {
-    this.worker.terminate()
+    this.onProgressCb = null
+    this.worker.removeEventListener('message', this.onMessage)
+    this.pending.forEach(({ reject }) => reject(new Error('destroyed')))
     this.pending.clear()
+    this.worker.terminate()
   }
 
   private onMessage = (e: MessageEvent<WorkerOutbound>) => {

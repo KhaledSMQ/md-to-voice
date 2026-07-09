@@ -28,6 +28,7 @@ export function ColumnResizeHandle({
 }: Props) {
   const valueRef = useRef(value)
   const onChangeRef = useRef(onChange)
+  const dragCleanupRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     valueRef.current = value
@@ -36,6 +37,13 @@ export function ColumnResizeHandle({
     onChangeRef.current = onChange
   }, [onChange])
 
+  useEffect(() => {
+    return () => {
+      dragCleanupRef.current?.()
+      dragCleanupRef.current = null
+    }
+  }, [])
+
   const clamp = useCallback((w: number) => Math.min(max, Math.max(min, Math.round(w))), [max, min])
 
   const onPointerDown = useCallback(
@@ -43,6 +51,9 @@ export function ColumnResizeHandle({
       if (e.button !== 0) return
       e.preventDefault()
       e.stopPropagation()
+
+      // End any previous drag before starting a new one.
+      dragCleanupRef.current?.()
 
       const startX = e.clientX
       const startW = valueRef.current
@@ -61,6 +72,7 @@ export function ColumnResizeHandle({
         window.removeEventListener('pointercancel', onUp)
         document.body.style.cursor = ''
         document.body.style.userSelect = ''
+        dragCleanupRef.current = null
       }
 
       document.body.style.cursor = 'col-resize'
@@ -68,6 +80,7 @@ export function ColumnResizeHandle({
       window.addEventListener('pointermove', onMove)
       window.addEventListener('pointerup', onUp)
       window.addEventListener('pointercancel', onUp)
+      dragCleanupRef.current = onUp
     },
     [clamp, panelSide],
   )

@@ -120,6 +120,15 @@ export function Reader({
   )
 
   useEffect(() => {
+    return () => {
+      if (resumeTimer.current) {
+        clearTimeout(resumeTimer.current)
+        resumeTimer.current = null
+      }
+    }
+  }, [])
+
+  useEffect(() => {
     const onVis = () => {
       if (document.visibilityState === 'hidden' && lastWordHeard.current >= 0) {
         flushResumeSave(lastWordHeard.current)
@@ -308,15 +317,19 @@ export function Reader({
     const maxW = parsed.words[parsed.words.length - 1]!.idx
     const w = Math.max(0, Math.min(openResume, maxW))
     if (w <= 0) return
-    const id = requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
+    let innerId = 0
+    const outerId = requestAnimationFrame(() => {
+      innerId = requestAnimationFrame(() => {
         const h = readerRef.current
         if (!h) return
         h.setActive(w)
         h.scrollToActiveNow()
       })
     })
-    return () => cancelAnimationFrame(id)
+    return () => {
+      cancelAnimationFrame(outerId)
+      if (innerId) cancelAnimationFrame(innerId)
+    }
   }, [activeDocId, openResume, inlineEdit, parsed.words])
 
   useEffect(() => {

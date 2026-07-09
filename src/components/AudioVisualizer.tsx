@@ -57,24 +57,27 @@ const STATUS_META: Record<
   },
 }
 
-function measureAudio(analyser: AnalyserNode): number {
-  const freq = new Uint8Array(analyser.frequencyBinCount)
-  const time = new Uint8Array(analyser.fftSize)
-  analyser.getByteFrequencyData(freq)
-  analyser.getByteTimeDomainData(time)
+function measureAudio(
+  analyser: AnalyserNode,
+  freqBuf: Uint8Array,
+  timeBuf: Uint8Array,
+): number {
+  // AnalyserNode typings expect ArrayBuffer-backed views; our reused buffers are fine at runtime.
+  analyser.getByteFrequencyData(freqBuf as Uint8Array<ArrayBuffer>)
+  analyser.getByteTimeDomainData(timeBuf as Uint8Array<ArrayBuffer>)
 
   let freqSum = 0
   const voiceStart = 2
-  const voiceEnd = Math.min(56, freq.length)
-  for (let i = voiceStart; i < voiceEnd; i++) freqSum += freq[i] ?? 0
+  const voiceEnd = Math.min(56, freqBuf.length)
+  for (let i = voiceStart; i < voiceEnd; i++) freqSum += freqBuf[i] ?? 0
   const freqNorm = freqSum / ((voiceEnd - voiceStart) * 255)
 
   let sumSq = 0
-  for (let i = 0; i < time.length; i++) {
-    const v = (time[i]! - 128) / 128
+  for (let i = 0; i < timeBuf.length; i++) {
+    const v = (timeBuf[i]! - 128) / 128
     sumSq += v * v
   }
-  const rms = Math.sqrt(sumSq / time.length)
+  const rms = Math.sqrt(sumSq / timeBuf.length)
 
   return Math.min(2.6, 0.16 + freqNorm * 2.1 + rms * 1.6)
 }
@@ -89,6 +92,9 @@ export function AudioVisualizer({ analyserRef, playerStatus, className = '' }: P
   const rafRef = useRef<number | null>(null)
   const smoothAmpRef = useRef(0.12)
   const resizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** Reused every frame — avoid allocating ~512 bytes × 60fps while speaking. */
+  const freqBufRef = useRef<Uint8Array | null>(null)
+  const timeBufRef = useRef<Uint8Array | null>(null)
   const [reducedMotion, setReducedMotion] = useState(false)
 
   const isPlaying = playerStatus === 'playing'
@@ -151,7 +157,16 @@ export function AudioVisualizer({ analyserRef, playerStatus, className = '' }: P
           let target: number
 
           if (isPlaying && analyser) {
-            target = measureAudio(analyser)
+            if (
+              !freqBufRef.current ||
+              freqBufRef.current.length !== analyser.frequencyBinCount
+            ) {
+              freqBufRef.current = new Uint8Array(analyser.frequencyBinCount)
+            }
+            if (!timeBufRef.current || timeBufRef.current.length !== analyser.fftSize) {
+              timeBufRef.current = new Uint8Array(analyser.fftSize)
+            }
+            target = measureAudio(analyser, freqBufRef.current, timeBufRef.current)
           } else if (isPaused) {
             target = 0.13
           } else {

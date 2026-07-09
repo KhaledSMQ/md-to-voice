@@ -150,9 +150,17 @@ async function drainQueue(): Promise<void> {
 
 function cancelPending(): void {
   // Drop queued work; client already rejects those promises.
+  // Mark every queued id cancelled so a late drain can't resurrect them.
+  for (const msg of queue) cancelled.add(msg.reqId)
   queue.length = 0
   // In-flight generate must not post a result after cancel.
   if (inFlightId != null) cancelled.add(inFlightId)
+  // Bound the cancelled set — ids are monotonic and only matter while in-flight.
+  if (cancelled.size > 64) {
+    const keep = inFlightId
+    cancelled.clear()
+    if (keep != null) cancelled.add(keep)
+  }
 }
 
 ctx.addEventListener('message', (e: MessageEvent<WorkerInbound>) => {
