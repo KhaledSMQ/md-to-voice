@@ -64,6 +64,7 @@ export default function App() {
   const [controlsWidth, setControlsWidth] = useState(() => loadAppSettings().controlsWidth)
   const [fontSize, setFontSize] = useState(() => loadAppSettings().fontSize)
   const [storageBanner, setStorageBanner] = useState<string | null>(null)
+  const [readingFocus, setReadingFocus] = useState(false)
 
   const [docId, setDocId] = useState('')
   const [title, setTitle] = useState('')
@@ -397,7 +398,9 @@ export default function App() {
 
       <main className="flex-1 w-full min-h-0 py-3 sm:py-4 flex flex-col gap-4 lg:flex-row lg:gap-0">
         <aside
-          className="space-y-4 min-w-0 w-full lg:shrink-0 lg:w-[var(--sidebar-width)] px-3 sm:px-4 lg:px-0 lg:pl-4"
+          className={`space-y-4 min-w-0 w-full lg:shrink-0 lg:w-[var(--sidebar-width)] px-3 sm:px-4 lg:px-0 lg:pl-4 ${
+            readingFocus ? 'reading-focus-dim' : ''
+          }`}
           style={{ ['--sidebar-width' as string]: `${sidebarWidth}px` }}
         >
           <SourcePanel
@@ -431,7 +434,7 @@ export default function App() {
           onReset={() => setSidebarWidth(DEFAULT_APP_SETTINGS.sidebarWidth)}
           panelSide="end"
           ariaLabel="Resize sidebar"
-          className="hidden lg:block"
+          className={`hidden lg:block ${readingFocus ? 'reading-focus-dim' : ''}`}
         />
 
         <section className="min-w-0 flex-1 flex flex-col px-3 sm:px-4 lg:px-0 lg:pr-4">
@@ -449,6 +452,7 @@ export default function App() {
             onOpenFileTab={() => setSourceTab('file')}
             onOpenPasteTab={() => setSourceTab('edit')}
             onPlaybackBegan={onPlaybackBegan}
+            onReadingFocusChange={setReadingFocus}
             fontSize={fontSize}
             onFontSizeChange={setFontSize}
             controlsWidth={controlsWidth}

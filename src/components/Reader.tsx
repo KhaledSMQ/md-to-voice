@@ -32,6 +32,8 @@ type Props = {
   onOpenPasteTab: () => void
   /** Fires whenever audio playback starts (play, resume, or seek to word). */
   onPlaybackBegan?: () => void
+  /** True while speaking/paused in normal (non-teleprompter) mode — dim side chrome. */
+  onReadingFocusChange?: (focused: boolean) => void
   fontSize: number
   onFontSizeChange: (size: number) => void
   controlsWidth: number
@@ -56,6 +58,7 @@ export function Reader({
   onOpenFileTab,
   onOpenPasteTab,
   onPlaybackBegan,
+  onReadingFocusChange,
   fontSize,
   onFontSizeChange,
   controlsWidth,
@@ -201,6 +204,17 @@ export function Reader({
     !inlineEdit &&
     !noPlayableText &&
     (player.status === 'playing' || player.status === 'paused')
+
+  const readingFocus =
+    !showTeleprompter &&
+    !inlineEdit &&
+    !noPlayableText &&
+    (player.status === 'playing' || player.status === 'paused')
+
+  useEffect(() => {
+    onReadingFocusChange?.(readingFocus)
+    return () => onReadingFocusChange?.(false)
+  }, [readingFocus, onReadingFocusChange])
 
   useEffect(() => {
     if (player.status === 'ready' || player.status === 'idle' || player.status === 'finished') {
@@ -482,11 +496,13 @@ export function Reader({
         onReset={() => onControlsWidthChange(DEFAULT_APP_SETTINGS.controlsWidth)}
         panelSide="start"
         ariaLabel="Resize controls panel"
-        className="hidden lg:block"
+        className={`hidden lg:block ${readingFocus ? 'reading-focus-dim' : ''}`}
       />
 
       <aside
-        className="min-w-0 w-full space-y-3 lg:shrink-0 lg:w-[var(--controls-width)]"
+        className={`min-w-0 w-full space-y-3 lg:shrink-0 lg:w-[var(--controls-width)] ${
+          readingFocus ? 'reading-focus-dim' : ''
+        }`}
         style={{ ['--controls-width' as string]: `${controlsWidth}px` }}
       >
         <Controls
