@@ -400,7 +400,11 @@ export function Reader({
           words={parsed.words}
           activeWordIdx={player.activeWordIdx}
           playing={player.status === 'playing'}
+          canSkip={parsed.chunks.length > 1}
           onWordClick={onWordClick}
+          onTogglePlay={() => player.toggle()}
+          onPrevChunk={() => void player.skipChunk(-1)}
+          onNextChunk={() => void player.skipChunk(1)}
           onDismiss={() => setTeleprompterDismissed(true)}
         />
       )}

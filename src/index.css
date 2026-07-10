@@ -54,8 +54,8 @@ body {
     color: rgba(255, 255, 255, 0.18);
     opacity: 0.55;
     filter: blur(5px);
-    transform: scale(0.9) translateY(10px);
-    transform-origin: center center;
+    transform: scale(0.96) translateY(8px);
+    transform-origin: left center;
     will-change: transform, opacity, filter, color;
     transition:
       opacity 780ms cubic-bezier(0.22, 1, 0.36, 1),
@@ -68,22 +68,22 @@ body {
     color: rgba(255, 255, 255, 0.28);
     opacity: 0.7;
     filter: blur(3px);
-    transform: scale(0.94) translateY(6px);
+    transform: scale(0.975) translateY(5px);
   }
 
   .teleprompter-line[data-dist='2'][data-ahead='0'] {
-    transform: scale(0.94) translateY(-6px);
+    transform: scale(0.975) translateY(-5px);
   }
 
   .teleprompter-line[data-dist='1'] {
     color: rgba(255, 255, 255, 0.48);
     opacity: 0.88;
     filter: blur(1.25px);
-    transform: scale(0.97) translateY(3px);
+    transform: scale(0.99) translateY(2px);
   }
 
   .teleprompter-line[data-dist='1'][data-ahead='0'] {
-    transform: scale(0.97) translateY(-3px);
+    transform: scale(0.99) translateY(-2px);
   }
 
   .teleprompter-line[data-dist='0'],
@@ -91,8 +91,27 @@ body {
     color: rgba(255, 255, 255, 0.96);
     opacity: 1;
     filter: blur(0);
-    transform: scale(1.04) translateY(0);
+    transform: scale(1) translateY(0);
     text-shadow: 0 0 42px rgba(255, 255, 255, 0.14);
+  }
+
+  /* Manual scroll / hover: reveal content so the reader can aim a click. */
+  .teleprompter-stage.is-browsing .teleprompter-line,
+  .teleprompter-line.is-hovered,
+  .teleprompter-line:hover {
+    color: rgba(255, 255, 255, 0.88);
+    opacity: 1;
+    filter: blur(0);
+    transform: scale(1) translateY(0);
+    text-shadow: none;
+    transition-duration: 180ms;
+  }
+
+  .teleprompter-stage.is-browsing .teleprompter-line-active,
+  .teleprompter-line-active.is-hovered,
+  .teleprompter-line-active:hover {
+    color: rgba(255, 255, 255, 0.96);
+    text-shadow: 0 0 28px rgba(255, 255, 255, 0.12);
   }
 
   .teleprompter-line-static,
@@ -124,6 +143,212 @@ body {
     color: rgba(255, 255, 255, 0.5);
   }
 
+  .teleprompter-dock-chrome {
+    transition:
+      opacity 420ms cubic-bezier(0.22, 1, 0.36, 1),
+      transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .teleprompter-dock-chrome.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+
+  .teleprompter-dock-chrome.is-hidden {
+    opacity: 0;
+    transform: translateY(12px);
+    pointer-events: none;
+  }
+
+  .teleprompter-dock-chrome.is-static {
+    transition: none;
+  }
+
+  .teleprompter-dock {
+    position: relative;
+    overflow: hidden;
+    border-radius: 1.35rem;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    background:
+      linear-gradient(
+        155deg,
+        rgba(255, 255, 255, 0.22) 0%,
+        rgba(255, 255, 255, 0.08) 38%,
+        rgba(255, 255, 255, 0.04) 100%
+      );
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.28) inset,
+      0 -1px 0 rgba(255, 255, 255, 0.06) inset,
+      0 18px 50px rgba(0, 0, 0, 0.45),
+      0 2px 8px rgba(0, 0, 0, 0.25);
+    backdrop-filter: blur(28px) saturate(1.55);
+    -webkit-backdrop-filter: blur(28px) saturate(1.55);
+  }
+
+  .teleprompter-dock::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background:
+      radial-gradient(120% 80% at 12% -10%, rgba(255, 255, 255, 0.38), transparent 42%),
+      radial-gradient(90% 60% at 88% 110%, rgba(251, 191, 36, 0.1), transparent 48%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.12), transparent 42%);
+  }
+
+  .teleprompter-dock::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  }
+
+  .teleprompter-dock-exit {
+    display: inline-flex;
+    height: 2.25rem;
+    flex-shrink: 0;
+    align-items: center;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.1);
+    padding: 0 0.9rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    transition:
+      background 140ms ease,
+      border-color 140ms ease;
+  }
+
+  .teleprompter-dock-exit:hover {
+    border-color: rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.16);
+  }
+
+  .teleprompter-dock-exit:focus {
+    outline: none;
+  }
+
+  .teleprompter-dock-exit:focus-visible {
+    box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.45);
+  }
+
+  .teleprompter-dock-btn {
+    display: inline-flex;
+    height: 2.25rem;
+    width: 2.25rem;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    transition:
+      background 140ms ease,
+      border-color 140ms ease,
+      transform 100ms ease;
+  }
+
+  .teleprompter-dock-btn:hover:not(:disabled) {
+    border-color: rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.18);
+  }
+
+  .teleprompter-dock-btn:active:not(:disabled) {
+    transform: scale(0.96);
+  }
+
+  .teleprompter-dock-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.35;
+  }
+
+  .teleprompter-dock-btn:focus {
+    outline: none;
+  }
+
+  .teleprompter-dock-btn:focus-visible {
+    box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.45);
+  }
+
+  .teleprompter-dock-play {
+    display: inline-flex;
+    height: 2.75rem;
+    width: 2.75rem;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    background:
+      linear-gradient(160deg, rgba(255, 255, 255, 0.55), rgba(52, 211, 153, 0.92) 55%, rgba(16, 185, 129, 0.95));
+    color: rgb(2 6 23);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.55),
+      0 8px 24px rgba(52, 211, 153, 0.28);
+    transition:
+      background 140ms ease,
+      box-shadow 140ms ease,
+      transform 100ms ease;
+  }
+
+  .teleprompter-dock-play.is-playing {
+    background:
+      linear-gradient(160deg, rgba(255, 255, 255, 0.55), rgba(252, 211, 77, 0.95) 55%, rgba(245, 158, 11, 0.95));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.55),
+      0 8px 24px rgba(251, 191, 36, 0.3);
+  }
+
+  .teleprompter-dock-play:hover {
+    filter: brightness(1.05);
+  }
+
+  .teleprompter-dock-play:active {
+    transform: scale(0.96);
+  }
+
+  .teleprompter-dock-play:focus {
+    outline: none;
+  }
+
+  .teleprompter-dock-play:focus-visible {
+    box-shadow:
+      0 0 0 2px rgba(251, 191, 36, 0.5),
+      inset 0 1px 0 rgba(255, 255, 255, 0.55),
+      0 8px 24px rgba(52, 211, 153, 0.28);
+  }
+
+  .teleprompter-scrubber-wrap {
+    position: relative;
+    padding-bottom: 0.35rem;
+  }
+
+  .teleprompter-scrubber-ticks {
+    top: calc(50% + 7px);
+    height: 5px;
+  }
+
+  .teleprompter-scrubber-tick {
+    position: absolute;
+    top: 0;
+    width: 1.5px;
+    height: 5px;
+    margin-left: -0.75px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.38);
+  }
+
   .teleprompter-scrubber {
     -webkit-appearance: none;
     appearance: none;
@@ -149,9 +374,10 @@ body {
       90deg,
       rgb(251 191 36) 0%,
       rgb(251 191 36) var(--scrub-pct, 0%),
-      rgba(255, 255, 255, 0.14) var(--scrub-pct, 0%),
-      rgba(255, 255, 255, 0.14) 100%
+      rgba(255, 255, 255, 0.18) var(--scrub-pct, 0%),
+      rgba(255, 255, 255, 0.18) 100%
     );
+    box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.25);
   }
 
   .teleprompter-scrubber::-webkit-slider-thumb {
@@ -161,9 +387,11 @@ body {
     height: 18px;
     margin-top: -6px;
     border-radius: 999px;
-    border: 2px solid rgba(15, 23, 42, 0.85);
+    border: 1.5px solid rgba(255, 255, 255, 0.65);
     background: radial-gradient(circle at 35% 30%, #fff7d6, #fbbf24 55%, #d97706);
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+    box-shadow:
+      0 4px 14px rgba(0, 0, 0, 0.35),
+      inset 0 1px 0 rgba(255, 255, 255, 0.5);
     transition: transform 140ms ease;
   }
 
@@ -174,7 +402,7 @@ body {
   .teleprompter-scrubber::-moz-range-track {
     height: 6px;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.18);
   }
 
   .teleprompter-scrubber::-moz-range-progress {
@@ -187,12 +415,16 @@ body {
     width: 18px;
     height: 18px;
     border-radius: 999px;
-    border: 2px solid rgba(15, 23, 42, 0.85);
+    border: 1.5px solid rgba(255, 255, 255, 0.65);
     background: radial-gradient(circle at 35% 30%, #fff7d6, #fbbf24 55%, #d97706);
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
   }
 
   @media (prefers-reduced-motion: reduce) {
+    .teleprompter-dock-chrome {
+      transition: none;
+    }
+
     .teleprompter-line {
       transition: none !important;
       filter: none !important;
