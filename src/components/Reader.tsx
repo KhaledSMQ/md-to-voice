@@ -748,7 +748,7 @@ export function Reader({
   ])
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row lg:gap-0">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
       <input
         ref={fileInputRef}
         type="file"
@@ -775,6 +775,38 @@ export function Reader({
         />
       )}
 
+      <ReaderChrome
+        inlineEdit={inlineEdit}
+        sourceName={sourceName}
+        onTitleChange={onTitleChange}
+        fontSize={fontSize}
+        onFontSizeChange={onFontSizeChange}
+        readingPreset={readingPreset}
+        onReadingPresetChange={onReadingPresetChange}
+        measureWidth={measureWidth}
+        onMeasureWidthChange={onMeasureWidthChange}
+        onPaste={() => void handlePasteClick()}
+        onOpenFile={openFilePicker}
+        onToggleInlineEdit={() => {
+          setInlineEdit((v) => {
+            if (!v) closeSearch()
+            return !v
+          })
+        }}
+        onOpenSearch={openSearch}
+        searchOpen={searchActive}
+        onToggleOutline={() => {
+          setOutlineOpen((v) => {
+            if (!v) closeSearch()
+            return !v
+          })
+        }}
+        outlineOpen={outlineOpen}
+        outlineAvailable={outlineAvailable}
+        listening={immersive}
+      />
+
+      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row lg:gap-0">
       <aside
         className="studio-deck min-w-0 w-full lg:shrink-0 lg:w-[var(--controls-width)] lg:min-h-0 lg:overflow-y-auto"
         style={{ ['--controls-width' as string]: `${controlsWidth}px` }}
@@ -809,8 +841,12 @@ export function Reader({
           }}
         />
 
-        {!immersive && (
-          <div className="studio-shelf">
+        <div
+          className={`studio-shelf ${immersive ? 'is-collapsed' : ''}`}
+          inert={immersive || undefined}
+          aria-hidden={immersive || undefined}
+        >
+          <div className="studio-shelf-inner">
             <FileUploader onFile={onFile} compact label="Open Markdown" />
             <RecentsList
               documents={documents}
@@ -822,7 +858,7 @@ export function Reader({
               onOpenFile={openFilePicker}
             />
           </div>
-        )}
+        </div>
       </aside>
 
       <ColumnResizeHandle
@@ -839,37 +875,6 @@ export function Reader({
       <div
         className={`relative flex min-w-0 min-h-[min(50vh,28rem)] flex-col panel-card lg:min-h-0 lg:flex-1 ${READER_MAX_H}`}
       >
-        <ReaderChrome
-          inlineEdit={inlineEdit}
-          sourceName={sourceName}
-          onTitleChange={onTitleChange}
-          fontSize={fontSize}
-          onFontSizeChange={onFontSizeChange}
-          readingPreset={readingPreset}
-          onReadingPresetChange={onReadingPresetChange}
-          measureWidth={measureWidth}
-          onMeasureWidthChange={onMeasureWidthChange}
-          onPaste={() => void handlePasteClick()}
-          onOpenFile={openFilePicker}
-          onToggleInlineEdit={() => {
-            setInlineEdit((v) => {
-              if (!v) closeSearch()
-              return !v
-            })
-          }}
-          onOpenSearch={openSearch}
-          searchOpen={searchActive}
-          onToggleOutline={() => {
-            setOutlineOpen((v) => {
-              if (!v) closeSearch()
-              return !v
-            })
-          }}
-          outlineOpen={outlineOpen}
-          outlineAvailable={outlineAvailable}
-          listening={immersive}
-        />
-
         {searchActive && (
           <PreviewSearchBar
             query={searchQuery}
@@ -1036,6 +1041,7 @@ export function Reader({
             </button>
           </div>
         )}
+      </div>
       </div>
     </div>
   )

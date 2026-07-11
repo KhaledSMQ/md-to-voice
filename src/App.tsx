@@ -354,49 +354,6 @@ export default function App() {
         onError={(message) => setDropError(message)}
       />
 
-      <header
-        className={`border-b border-white/5 bg-ink-950/40 backdrop-blur shrink-0 transition-[padding] duration-300 ${
-          readingFocus ? 'py-2' : ''
-        }`}
-      >
-        <div
-          className={`w-full px-4 sm:px-6 flex items-center justify-between ${
-            readingFocus ? 'py-0' : 'py-4'
-          }`}
-        >
-          <div className="flex items-center gap-3">
-            <div
-              className={`rounded-lg bg-gradient-to-br from-amber-300 to-pink-400 grid place-items-center text-ink-950 font-black ${
-                readingFocus ? 'h-7 w-7 text-[10px]' : 'h-9 w-9'
-              }`}
-            >
-              md
-            </div>
-            {!readingFocus && (
-              <div>
-                <h1 className="text-lg font-semibold tracking-tight">md to voice</h1>
-                <p className="text-xs text-ink-400">
-                  Karaoke-style Markdown reader · Kokoro TTS · Pretext
-                </p>
-              </div>
-            )}
-            {readingFocus && (
-              <p className="text-sm font-medium tracking-tight text-ink-200">md to voice</p>
-            )}
-          </div>
-          {!readingFocus && (
-            <a
-              href="https://github.com/hexgrad/kokoro"
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs text-ink-400 hover:text-ink-200"
-            >
-              Powered by kokoro-js
-            </a>
-          )}
-        </div>
-      </header>
-
       {(storageBanner || dropError) && (
         <div
           className="flex items-start justify-between gap-3 border-b border-red-500/30 bg-red-500/10 px-4 py-2 text-xs text-red-100 sm:px-6"
@@ -417,7 +374,7 @@ export default function App() {
         </div>
       )}
 
-      <main className="flex-1 w-full min-h-0 py-3 sm:py-4 flex flex-col px-3 sm:px-4">
+      <main className="flex-1 w-full min-h-0 py-2 sm:py-3 flex flex-col px-3 sm:px-4">
         <Reader
           activeDocId={docId}
           openResume={openResume}
@@ -448,8 +405,8 @@ export default function App() {
       </main>
 
       <footer
-        className={`border-t border-white/5 text-center text-xs text-ink-500 shrink-0 transition-all duration-300 ${
-          readingFocus ? 'max-h-0 overflow-hidden border-0 py-0 opacity-0' : 'py-3 opacity-100'
+        className={`border-t border-white/5 text-center text-xs text-ink-500 shrink-0 overflow-hidden transition-[max-height,opacity,padding,border-color] duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
+          readingFocus ? 'max-h-0 border-transparent py-0 opacity-0' : 'max-h-16 py-3 opacity-100'
         }`}
       >
         Runs in your browser; the app shell is available offline after the first visit. TTS model (~160 MB)

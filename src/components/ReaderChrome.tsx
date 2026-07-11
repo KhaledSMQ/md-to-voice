@@ -99,7 +99,20 @@ export function ReaderChrome({
   const showTools = !listening
 
   return (
-    <div className="flex shrink-0 items-center gap-1.5 border-b border-white/5 px-3 py-1.5">
+    <header
+      className={`studio-app-header ${listening ? 'is-listening' : ''}`}
+    >
+      <div className="studio-app-brand shrink-0">
+        <div className="studio-app-mark" aria-hidden>
+          md
+        </div>
+        <h1 className="studio-app-wordmark">md to voice</h1>
+      </div>
+
+      <span className="studio-app-sep text-ink-600" aria-hidden>
+        ·
+      </span>
+
       {headerRenaming ? (
         <input
           ref={titleInputRef}
@@ -118,7 +131,7 @@ export function ReaderChrome({
             }
           }}
           spellCheck={false}
-          className="min-w-0 flex-1 rounded border border-amber-300/30 bg-ink-950/50 px-2 py-0.5 text-center text-[11px] font-mono text-ink-100 focus:outline-none focus:ring-1 focus:ring-amber-300/50"
+          className="min-w-0 flex-1 rounded border border-amber-300/30 bg-ink-950/50 px-2 py-0.5 text-[12px] font-mono text-ink-100 focus:outline-none focus:ring-1 focus:ring-amber-300/50"
           aria-label="Document title"
         />
       ) : (
@@ -126,14 +139,17 @@ export function ReaderChrome({
           type="button"
           onDoubleClick={startRename}
           title="Double-click to rename"
-          className="min-w-0 flex-1 truncate text-center text-[11px] text-ink-300 font-mono cursor-default hover:text-ink-100 focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-300/50 rounded"
+          className="min-w-0 flex-1 truncate text-left text-[12px] text-ink-300 font-mono cursor-default hover:text-ink-100 focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-300/50 rounded"
         >
           {displayTitle}
         </button>
       )}
 
-      {showTools && (
-        <div className="relative flex shrink-0 items-center gap-1">
+      <div
+        className="studio-app-actions"
+        inert={listening || undefined}
+        aria-hidden={listening || undefined}
+      >
           <button
             ref={menuBtnRef}
             type="button"
@@ -142,6 +158,7 @@ export function ReaderChrome({
             aria-controls={menuId}
             aria-haspopup="menu"
             title="More tools"
+            tabIndex={showTools ? undefined : -1}
             className={
               'inline-flex h-8 w-8 items-center justify-center rounded-lg border text-ink-300 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50 ' +
               (menuOpen
@@ -158,7 +175,7 @@ export function ReaderChrome({
               ref={menuRef}
               id={menuId}
               role="menu"
-              className="absolute right-0 top-[calc(100%+0.35rem)] z-30 w-60 rounded-xl border border-white/10 bg-ink-950/95 p-1.5 shadow-xl shadow-ink-950/50 backdrop-blur"
+              className="absolute right-0 top-[calc(100%+0.35rem)] z-50 w-60 rounded-xl border border-white/10 bg-ink-950/95 p-1.5 shadow-xl shadow-ink-950/50 backdrop-blur"
             >
               <div className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5">
                 <span className="text-[11px] text-ink-400">Text size</span>
@@ -218,25 +235,25 @@ export function ReaderChrome({
               />
             </div>
           )}
-        </div>
-      )}
 
-      <button
-        type="button"
-        onClick={onToggleInlineEdit}
-        aria-pressed={inlineEdit}
-        title={inlineEdit ? 'Back to preview' : 'Edit markdown in place'}
-        className={
-          'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-ink-300 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50 ' +
-          (inlineEdit
-            ? 'border-amber-300/50 bg-amber-300/15 text-amber-200'
-            : 'border-transparent hover:border-white/10 hover:bg-white/[0.06]')
-        }
-      >
-        <span className="sr-only">{inlineEdit ? 'Exit inline editor' : 'Open inline editor'}</span>
-        <PenIcon />
-      </button>
-    </div>
+          <button
+            type="button"
+            onClick={onToggleInlineEdit}
+            aria-pressed={inlineEdit}
+            title={inlineEdit ? 'Back to preview' : 'Edit markdown in place'}
+            tabIndex={showTools ? undefined : -1}
+            className={
+              'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-ink-300 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50 ' +
+              (inlineEdit
+                ? 'border-amber-300/50 bg-amber-300/15 text-amber-200'
+                : 'border-transparent hover:border-white/10 hover:bg-white/[0.06]')
+            }
+          >
+            <span className="sr-only">{inlineEdit ? 'Exit inline editor' : 'Open inline editor'}</span>
+            <PenIcon />
+          </button>
+      </div>
+    </header>
   )
 }
 

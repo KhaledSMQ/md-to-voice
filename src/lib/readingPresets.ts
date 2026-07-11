@@ -1,4 +1,9 @@
-/** Preview reading themes — soft contrast + type tuned for long sessions. */
+/**
+ * Preview reading themes tuned for sustained reading comfort:
+ * soft contrast (≈7–12:1 body, higher for Sharp), warm spectra at night
+ * (lower blue / circadian load), cream paper to cut glare, and soft
+ * near-black/near-white for accessibility without OLED bloom.
+ */
 
 export const READING_PRESET_IDS = ['night', 'sepia', 'day', 'contrast'] as const
 
@@ -17,26 +22,26 @@ export const READING_PRESETS: readonly ReadingPresetMeta[] = [
   {
     id: 'night',
     label: 'Dusk',
-    hint: 'Warm dark — easy for long night reading',
-    swatch: { bg: '#17140f', fg: '#e2d8c6' },
+    hint: 'Warm low-blue dark — easier on evening eyes',
+    swatch: { bg: '#1a1612', fg: '#d6cdb8' },
   },
   {
     id: 'sepia',
     label: 'Paper',
-    hint: 'Soft parchment + serif, book-like',
-    swatch: { bg: '#f3ead8', fg: '#3a3228' },
+    hint: 'Cream page + soft ink — book contrast, less glare',
+    swatch: { bg: '#f5edd9', fg: '#4a3f35' },
   },
   {
     id: 'day',
     label: 'Page',
-    hint: 'Warm off-white, clear for writing',
-    swatch: { bg: '#f7f5f0', fg: '#2c2c2a' },
+    hint: 'Soft daylight + charcoal — clear without harsh glare',
+    swatch: { bg: '#f2f1ec', fg: '#353532' },
   },
   {
     id: 'contrast',
     label: 'Sharp',
-    hint: 'Highest contrast without pure black/white glare',
-    swatch: { bg: '#0c0c0c', fg: '#f0f0f0' },
+    hint: 'High contrast for low vision — soft black/white limits bloom',
+    swatch: { bg: '#121212', fg: '#ececec' },
   },
 ] as const
 
