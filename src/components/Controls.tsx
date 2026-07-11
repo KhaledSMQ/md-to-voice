@@ -1,8 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import type { Device, VoiceInfo } from '../lib/tts/types'
 import type { LoadProgress, PlayerStatus } from '../lib/usePlayer'
 import { AudioVisualizer } from './AudioVisualizer'
-import type { RefObject } from 'react'
 
 type Props = {
   status: PlayerStatus
@@ -61,8 +60,10 @@ export function Controls({
   const canStop = status === 'playing' || status === 'paused'
   const isError = status === 'error'
   const canSkip = totalChunks > 0 && !isLoading
-  const showChunkProgress =
-    (status === 'playing' || status === 'paused' || status === 'finished') && totalChunks > 0
+  const showProgress =
+    (status === 'playing' || status === 'paused' || status === 'finished') && totalWords > 0
+
+  const [showWaveform, setShowWaveform] = useState(false)
 
   const ratio = progress.ratio ?? 0
   const ratioPct = Math.min(100, Math.max(0, ratio * 100))
@@ -74,12 +75,6 @@ export function Controls({
     if (volume > 0) lastVolumeRef.current = volume
   }, [volume])
 
-  const chunkNumber = Math.max(0, currentChunkIdx + 1)
-  const chunkPct =
-    totalChunks > 0
-      ? Math.min(100, Math.max(0, (chunkNumber / totalChunks) * 100))
-      : 0
-
   const heardOrdinal =
     activeWordIdx >= 0 && totalWords > 0
       ? Math.min(totalWords, activeWordIdx + 1)
@@ -89,15 +84,15 @@ export function Controls({
   const wordPct =
     totalWords > 0 ? Math.min(100, Math.max(0, (heardOrdinal / totalWords) * 100)) : 0
 
+  const chunkNumber = Math.max(0, currentChunkIdx + 1)
+
   const toggleMute = () => {
     if (isMuted) onVolume(lastVolumeRef.current)
     else onVolume(0)
   }
 
   return (
-    <div className="panel-card p-4 space-y-4">
-      <AudioVisualizer analyserRef={analyserRef} playerStatus={status} />
-
+    <div className="panel-card p-4 space-y-3">
       <div className="flex items-center gap-2">
         <button
           type="button"
@@ -115,8 +110,8 @@ export function Controls({
           disabled={isLoading}
           className={`flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 ${
             isPlaying
-              ? 'bg-amber-300 text-ink-950 shadow-lg shadow-amber-300/25 hover:bg-amber-200'
-              : 'bg-emerald-400 text-ink-950 shadow-lg shadow-emerald-400/20 hover:bg-emerald-300'
+              ? 'bg-amber-300 text-ink-950 shadow-lg shadow-amber-300/20 hover:bg-amber-200'
+              : 'bg-amber-300/90 text-ink-950 shadow-lg shadow-amber-300/15 hover:bg-amber-200'
           }`}
           title={isPlaying ? 'Pause (space)' : 'Play (space)'}
         >
@@ -166,7 +161,7 @@ export function Controls({
           </div>
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/5">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-amber-300 via-pink-400 to-sky-400 transition-[width] duration-300 ease-out"
+              className="h-full rounded-full bg-amber-300/80 transition-[width] duration-300 ease-out"
               style={{ width: `${ratioPct}%` }}
             />
           </div>
@@ -176,37 +171,25 @@ export function Controls({
         </div>
       )}
 
-      {showChunkProgress && (
-        <div className="space-y-2">
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-[10px] text-ink-400">
-              <span>Words</span>
-              <span className="font-mono tabular-nums text-ink-300">
-                {heardOrdinal} / {totalWords}
-              </span>
-            </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/5">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-amber-300/90 to-pink-400/90 transition-[width] duration-300 ease-out"
-                style={{ width: `${status === 'finished' ? 100 : wordPct}%` }}
-              />
-            </div>
+      {showProgress && (
+        <div className="space-y-1">
+          <div className="flex items-center justify-between text-[10px] text-ink-400">
+            <span>Progress</span>
+            <span className="font-mono tabular-nums text-ink-300">
+              {heardOrdinal} / {totalWords}
+              {totalChunks > 1 && (
+                <span className="text-ink-500">
+                  {' '}
+                  · {status === 'finished' ? totalChunks : chunkNumber}/{totalChunks}
+                </span>
+              )}
+            </span>
           </div>
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-[10px] text-ink-400">
-              <span>Chunks</span>
-              <span className="font-mono tabular-nums text-ink-300">
-                {status === 'finished' ? totalChunks : chunkNumber} / {totalChunks}
-              </span>
-            </div>
-            <div className="h-1 w-full overflow-hidden rounded-full bg-white/5">
-              <div
-                className="h-full rounded-full bg-white/25 transition-[width] duration-500 ease-out"
-                style={{
-                  width: `${status === 'finished' ? 100 : chunkPct}%`,
-                }}
-              />
-            </div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/5">
+            <div
+              className="h-full rounded-full bg-amber-300/85 transition-[width] duration-300 ease-out"
+              style={{ width: `${status === 'finished' ? 100 : wordPct}%` }}
+            />
           </div>
         </div>
       )}
@@ -214,7 +197,9 @@ export function Controls({
       <div className="space-y-3 border-t border-white/[0.06] pt-3">
         <div>
           <div className="mb-1.5 flex items-center justify-between">
-            <label htmlFor="tts-volume" className="text-xs text-ink-400">Volume</label>
+            <label htmlFor="tts-volume" className="text-xs text-ink-400">
+              Volume
+            </label>
             <span className="text-xs font-mono tabular-nums text-ink-300">
               {isMuted ? 'Muted' : `${volumePct}%`}
             </span>
@@ -250,7 +235,9 @@ export function Controls({
 
         <div>
           <div className="mb-1.5 flex items-center justify-between">
-            <label htmlFor="tts-speed" className="text-xs text-ink-400">Speed</label>
+            <label htmlFor="tts-speed" className="text-xs text-ink-400">
+              Speed
+            </label>
             <span className="text-xs font-mono tabular-nums text-ink-300">{speed.toFixed(2)}×</span>
           </div>
           <input
@@ -264,11 +251,6 @@ export function Controls({
             onChange={(e) => onSpeed(Number(e.target.value))}
             className="control-range"
           />
-          <div className="mt-1 flex justify-between text-[9px] font-mono text-ink-600">
-            <span>0.5×</span>
-            <span>1.0×</span>
-            <span>1.5×</span>
-          </div>
         </div>
       </div>
 
@@ -278,14 +260,14 @@ export function Controls({
           role="switch"
           aria-checked={teleprompterMode}
           onClick={() => onTeleprompterMode(!teleprompterMode)}
-          className={`flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors ${
+          className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition-colors ${
             teleprompterMode
               ? 'border-amber-300/35 bg-amber-300/10'
               : 'border-white/10 bg-white/[0.03] hover:border-white/18 hover:bg-white/[0.05]'
           }`}
         >
           <span
-            className={`mt-0.5 inline-flex h-5 w-9 shrink-0 items-center rounded-full border p-0.5 transition-colors ${
+            className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full border p-0.5 transition-colors ${
               teleprompterMode
                 ? 'border-amber-300/50 bg-amber-300/30'
                 : 'border-white/15 bg-white/10'
@@ -298,16 +280,12 @@ export function Controls({
               }`}
             />
           </span>
-          <span className="min-w-0">
+          <span className="min-w-0 flex-1">
             <span className="block text-sm font-medium text-ink-100">Teleprompter</span>
-            <span className="mt-0.5 block text-[11px] leading-snug text-ink-400">
-              Full-screen lyrics while speaking. Press T while playing to open.
-            </span>
+            <span className="mt-0.5 block text-[11px] leading-snug text-ink-500">Press T while playing</span>
           </span>
         </button>
-      </div>
 
-      <div className="space-y-2 border-t border-white/[0.06] pt-3">
         <label htmlFor="tts-voice" className="block text-xs text-ink-400">
           Voice
         </label>
@@ -323,7 +301,8 @@ export function Controls({
           ) : (
             voices.map((v) => (
               <option key={v.id} value={v.id}>
-                {v.name} · {v.language === 'en-us' ? 'US' : v.language === 'en-gb' ? 'UK' : v.language} · {v.gender === 'Female' ? 'F' : 'M'}
+                {v.name} · {v.language === 'en-us' ? 'US' : v.language === 'en-gb' ? 'UK' : v.language} ·{' '}
+                {v.gender === 'Female' ? 'F' : 'M'}
                 {v.traits ? ` · ${v.traits}` : ''}
               </option>
             ))
@@ -331,21 +310,31 @@ export function Controls({
         </select>
       </div>
 
-      <div className="flex items-center justify-between border-t border-white/[0.06] pt-3 text-xs">
-        <span className="text-ink-400">Backend</span>
-        <span
-          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 font-mono text-[11px] ${
-            device === 'webgpu'
-              ? 'border-emerald-400/30 text-emerald-300 bg-emerald-400/10'
-              : 'border-sky-400/30 text-sky-300 bg-sky-400/10'
-          }`}
+      <div className="border-t border-white/[0.06] pt-2">
+        <button
+          type="button"
+          onClick={() => setShowWaveform((v) => !v)}
+          aria-expanded={showWaveform}
+          className="flex w-full items-center justify-between rounded-lg px-1 py-1.5 text-[11px] text-ink-400 transition-colors hover:text-ink-200"
         >
-          <span
-            className={`h-1.5 w-1.5 rounded-full bg-current ${device ? 'status-pulse' : ''}`}
-          />
-          {device ?? 'detecting…'}
-        </span>
+          <span>Waveform</span>
+          <span className="font-mono text-ink-500">{showWaveform ? '−' : '+'}</span>
+        </button>
+        {showWaveform && (
+          <div className="mt-1">
+            <AudioVisualizer analyserRef={analyserRef} playerStatus={status} />
+          </div>
+        )}
       </div>
+
+      <p className="flex items-center justify-between gap-2 px-1 text-[11px] text-ink-500">
+        <span>
+          Press{' '}
+          <kbd className="rounded bg-white/10 px-1 py-0.5 font-mono text-ink-300">?</kbd> for
+          shortcuts
+        </span>
+        <span className="font-mono text-ink-400">{device ?? '…'}</span>
+      </p>
 
       {isError && error && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
@@ -354,14 +343,8 @@ export function Controls({
       )}
 
       {status === 'idle' && (
-        <div className="rounded-lg border border-amber-300/20 bg-amber-300/5 px-3 py-2.5 text-[11px] leading-relaxed text-ink-300 space-y-1.5">
-          <p className="font-medium text-amber-100">First play downloads the model</p>
-          <ul className="list-disc space-y-1 pl-4 text-ink-400">
-            <li>~160 MB Kokoro ONNX from Hugging Face (once)</li>
-            <li>WebGPU when available; otherwise WASM (slower)</li>
-            <li>Cached locally — later visits work offline</li>
-            <li>English voices only</li>
-          </ul>
+        <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-[11px] leading-relaxed text-ink-400">
+          First play downloads ~160 MB Kokoro (once). Cached for offline use.
         </div>
       )}
     </div>

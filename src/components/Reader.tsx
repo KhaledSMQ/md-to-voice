@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { MarkdownReader, type MarkdownReaderHandle, type PlayheadVisibility } from './MarkdownReader'
 import { Controls } from './Controls'
 import { ColumnResizeHandle } from './ColumnResizeHandle'
@@ -7,7 +7,10 @@ import { ReaderChrome } from './ReaderChrome'
 import { ReaderEmptyState } from './ReaderEmptyState'
 import { PreviewSearchBar } from './PreviewSearchBar'
 import { PreviewOutline } from './PreviewOutline'
+import { RecentsList } from './RecentsList'
 import { TeleprompterOverlay } from './TeleprompterOverlay'
+import { FileUploader } from './FileUploader'
+import { ShortcutsHelp } from './ShortcutsHelp'
 import { usePlayer } from '../lib/usePlayer'
 import {
   loadAppSettings,
@@ -16,7 +19,10 @@ import {
   CONTROLS_WIDTH_MAX,
   DEFAULT_APP_SETTINGS,
 } from '../lib/appSettings'
+import type { ReadingPresetId } from '../lib/readingPresets'
+import { measureWidthCss } from '../lib/readingPresets'
 import type { ParsedDocument } from '../lib/parseDocument'
+import type { StoredDocument } from '../lib/documentStore'
 import { scrollHeadingIntoContainer } from '../lib/documentOutline'
 import {
   applyPreviewSearchHighlights,
@@ -26,6 +32,7 @@ import {
   rangeOverlayBoxes,
   scrollRangeIntoContainer,
 } from '../lib/previewSearch'
+import { MARKDOWN_FILE_ACCEPT, readMarkdownFile } from '../lib/readMarkdownFile'
 
 type Props = {
   activeDocId: string
@@ -39,19 +46,26 @@ type Props = {
   onMarkdownChange: (text: string) => void
   sourceName: string
   onTitleChange: (name: string) => void
-  onOpenFileTab: () => void
-  onOpenPasteTab: () => void
+  onFile: (name: string, text: string) => void
+  documents: StoredDocument[]
+  onSelectDocument: (id: string) => void
+  onNewDocument: () => void
+  onDeleteDocument: (id: string) => void
   /** Fires whenever audio playback starts (play, resume, or seek to word). */
   onPlaybackBegan?: () => void
-  /** True while speaking/paused in normal (non-teleprompter) mode — dim side chrome. */
+  /** True while speaking/paused in normal (non-teleprompter) mode — immersive listen layout. */
   onReadingFocusChange?: (focused: boolean) => void
   fontSize: number
   onFontSizeChange: (size: number) => void
+  readingPreset: ReadingPresetId
+  onReadingPresetChange: (preset: ReadingPresetId) => void
+  measureWidth: number
+  onMeasureWidthChange: (ch: number) => void
   controlsWidth: number
   onControlsWidthChange: (width: number) => void
 }
 
-const READER_MAX_H = 'min-h-0 flex-1 max-h-[calc(100vh-9rem)]'
+const READER_MAX_H = 'reader-panel min-h-0 flex-1'
 const UI_SAVE_MS = 400
 const RESUME_DEBOUNCE_MS = 700
 
@@ -66,18 +80,26 @@ export function Reader({
   onMarkdownChange,
   sourceName,
   onTitleChange,
-  onOpenFileTab,
-  onOpenPasteTab,
+  onFile,
+  documents,
+  onSelectDocument,
+  onNewDocument,
+  onDeleteDocument,
   onPlaybackBegan,
   onReadingFocusChange,
   fontSize,
   onFontSizeChange,
+  readingPreset,
+  onReadingPresetChange,
+  measureWidth,
+  onMeasureWidthChange,
   controlsWidth,
   onControlsWidthChange,
 }: Props) {
   const readerRef = useRef<MarkdownReaderHandle>(null)
   const previewFrameRef = useRef<HTMLDivElement>(null)
   const inlineEditorRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [inlineEdit, setInlineEdit] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -105,6 +127,8 @@ export function Reader({
   /** Session-only hide (Esc / Exit) without flipping the saved preference. */
   const [teleprompterDismissed, setTeleprompterDismissed] = useState(false)
   const [playhead, setPlayhead] = useState<PlayheadVisibility>({ inView: true, out: null })
+  const [nowPlayingVisible, setNowPlayingVisible] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
   const [resumeBannerDismissedKey, setResumeBannerDismissedKey] = useState<string | null>(null)
   const resumeBannerKey = `${activeDocId}:${openResume}`
   const resumeBannerDismissed = resumeBannerDismissedKey === resumeBannerKey
@@ -246,6 +270,8 @@ export function Reader({
     !noPlayableText &&
     (player.status === 'playing' || player.status === 'paused')
 
+  const immersive = readingFocus
+
   useEffect(() => {
     onReadingFocusChange?.(readingFocus)
     return () => onReadingFocusChange?.(false)
@@ -316,6 +342,22 @@ export function Reader({
       setInlineEdit(true)
     }
   }, [replaceContentAndResetPlayback])
+
+  const openFilePicker = useCallback(() => {
+    fileInputRef.current?.click()
+  }, [])
+
+  const onFileInputChange = useCallback(
+    (e: ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0]
+      e.target.value = ''
+      if (!file) return
+      void readMarkdownFile(file).then((result) => {
+        if (result.ok) onFile(result.name, result.text)
+      })
+    },
+    [onFile],
+  )
 
   const prevPlayerStatus = useRef(player.status)
   useEffect(() => {
@@ -388,6 +430,7 @@ export function Reader({
 
   const openSearch = useCallback(() => {
     if (inlineEdit || noPlayableText || showTeleprompter) return
+    setOutlineOpen(false)
     setSearchOpen(true)
     setSearchFocusNonce((n) => n + 1)
     readerRef.current?.setAutoScrollLocked(true)
@@ -440,6 +483,21 @@ export function Reader({
   }, [goToSearchMatch])
 
   const searchActive = searchOpen && !inlineEdit && !noPlayableText && !showTeleprompter
+
+  // Delay the "Now playing" chip so brief scroll jitter doesn't flash it.
+  useEffect(() => {
+    const away =
+      !playhead.inView &&
+      Boolean(playhead.out) &&
+      !searchActive &&
+      (player.status === 'playing' || player.status === 'paused')
+    if (!away) {
+      setNowPlayingVisible(false)
+      return
+    }
+    const t = setTimeout(() => setNowPlayingVisible(true), 900)
+    return () => clearTimeout(t)
+  }, [playhead.inView, playhead.out, searchActive, player.status])
 
   // Close the sections rail when editing or entering teleprompter.
   useEffect(() => {
@@ -619,6 +677,19 @@ export function Reader({
       }
       if (inField) return
 
+      if (e.key === '?' || (e.shiftKey && e.key === '/')) {
+        e.preventDefault()
+        setHelpOpen((v) => !v)
+        return
+      }
+      if (helpOpen) {
+        if (e.code === 'Escape') {
+          e.preventDefault()
+          setHelpOpen(false)
+        }
+        return
+      }
+
       if (isMod && (e.key === 'v' || e.key === 'V')) {
         if (inlineEdit || showTeleprompter) return
         e.preventDefault()
@@ -673,10 +744,23 @@ export function Reader({
     closeSearch,
     goNextSearch,
     goPrevSearch,
+    helpOpen,
   ])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row lg:gap-0">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={MARKDOWN_FILE_ACCEPT}
+        className="hidden"
+        onChange={onFileInputChange}
+      />
+      <ShortcutsHelp
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        backend={player.device}
+      />
       {showTeleprompter && (
         <TeleprompterOverlay
           words={parsed.words}
@@ -690,174 +774,9 @@ export function Reader({
           onDismiss={() => setTeleprompterDismissed(true)}
         />
       )}
-      <div
-        className={`flex min-w-0 min-h-[min(50vh,28rem)] flex-col panel-card lg:min-h-0 lg:flex-1 ${READER_MAX_H}`}
-      >
-        <ReaderChrome
-          inlineEdit={inlineEdit}
-          sourceName={sourceName}
-          onTitleChange={onTitleChange}
-          fontSize={fontSize}
-          onFontSizeChange={onFontSizeChange}
-          onPaste={() => void handlePasteClick()}
-          onToggleInlineEdit={() => {
-            setInlineEdit((v) => {
-              if (!v) closeSearch()
-              return !v
-            })
-          }}
-          onOpenSearch={openSearch}
-          searchOpen={searchActive}
-          onToggleOutline={() => setOutlineOpen((v) => !v)}
-          outlineOpen={outlineOpen}
-          outlineAvailable={outlineAvailable}
-        />
-
-        {searchActive && (
-          <PreviewSearchBar
-            query={searchQuery}
-            onQueryChange={setSearchQuery}
-            matchCount={searchMatches.length}
-            currentIndex={searchMatches.length === 0 ? -1 : searchIndex}
-            onNext={goNextSearch}
-            onPrev={goPrevSearch}
-            onClose={closeSearch}
-            focusNonce={searchFocusNonce}
-          />
-        )}
-
-        {inlineEdit ? (
-          <textarea
-            ref={inlineEditorRef}
-            id="md-inline-editor"
-            spellCheck={false}
-            value={markdown}
-            onChange={(e) => onMarkdownChange(e.target.value)}
-            onPaste={(e) => {
-              // Native insert-at-caret paste. Only treat a full-document replace
-              // when the editor is empty (same as "paste into empty preview").
-              if (markdown.trim()) return
-              const text = e.clipboardData.getData('text/plain')
-              if (!text.trim()) return
-              e.preventDefault()
-              replaceContentAndResetPlayback(text)
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                e.preventDefault()
-                setInlineEdit(false)
-              }
-            }}
-            className="w-full min-h-0 flex-1 resize-none overflow-y-auto border-0 bg-ink-950/40 px-4 py-4 font-mono leading-[1.65] text-ink-100 caret-amber-200 [tab-size:2] selection:bg-amber-300/25 focus:outline-none"
-            style={{ fontSize: `${fontSize}px` }}
-            aria-label="Markdown source (inline editor)"
-            placeholder="Write or paste Markdown…"
-          />
-        ) : noPlayableText ? (
-          <ReaderEmptyState
-            onOpenFileTab={onOpenFileTab}
-            onOpenPasteTab={onOpenPasteTab}
-            onWriteHere={() => setInlineEdit(true)}
-            onPasteFromClipboard={() => void handlePasteClick()}
-          />
-        ) : (
-          <div
-            className={
-              'relative flex min-h-0 min-w-0 flex-1 overflow-hidden' +
-              (showResumeNudge && resumeNudge ? ' pt-[4.5rem]' : '')
-            }
-          >
-            {showResumeNudge && resumeNudge && (
-              <ResumeBanner
-                at={resumeNudge.at}
-                total={resumeNudge.total}
-                onContinue={() => {
-                  setResumeBannerDismissedKey(resumeBannerKey)
-                  void player.play()
-                }}
-                onFromStart={onResumeFromStart}
-                onDismiss={() => setResumeBannerDismissedKey(resumeBannerKey)}
-              />
-            )}
-            {outlineAvailable && (
-              <div
-                className={
-                  'flex min-h-0 self-stretch ' + (readingFocus ? 'reading-focus-dim' : '')
-                }
-              >
-                <PreviewOutline
-                  items={outline}
-                  open={outlineOpen}
-                  onOpenChange={setOutlineOpen}
-                  activeId={activeOutlineId}
-                  onSelect={jumpToOutlineSection}
-                />
-              </div>
-            )}
-            <div ref={previewFrameRef} className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-              <MarkdownReader
-                reactNode={parsed.reactNode}
-                parseKey={parseKey}
-                onWordClick={onWordClick}
-                onActiveVisibilityChange={onActiveVisibilityChange}
-                ref={readerRef}
-                className="markdown-body min-h-0 min-w-0 h-full max-h-full flex-1 overflow-y-auto px-5 py-4"
-                style={{ ['--reader-font-size' as string]: `${fontSize}px`, fontSize: `${fontSize}px` }}
-              />
-              {!useCssHighlight &&
-                overlayBoxes.map((box, i) => (
-                  <div
-                    key={i}
-                    className="pointer-events-none absolute z-[5] rounded-sm bg-sky-300/35 ring-1 ring-sky-200/50"
-                    style={{
-                      top: box.top,
-                      left: box.left,
-                      width: box.width,
-                      height: box.height,
-                    }}
-                    aria-hidden
-                  />
-                ))}
-              {!playhead.inView &&
-                !searchActive &&
-                (player.status === 'playing' || player.status === 'paused') &&
-                playhead.out && (
-                  <div className="pointer-events-none absolute bottom-3 left-0 right-0 z-10 flex justify-center">
-                    <button
-                      type="button"
-                      onClick={() => readerRef.current?.scrollToActiveNow()}
-                      title={
-                        playhead.out === 'above'
-                          ? 'Current word is above — scroll up'
-                          : 'Current word is below — scroll down'
-                      }
-                      className="pointer-events-auto flex items-center gap-2 rounded-full border border-amber-300/40 bg-ink-900/90 px-4 py-1.5 text-sm font-medium text-amber-100 shadow-lg shadow-ink-950/40 backdrop-blur transition-colors hover:border-amber-200/60 hover:bg-ink-800/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50"
-                    >
-                      <PlayArrows direction={playhead.out} />
-                      <span>Now playing</span>
-                    </button>
-                  </div>
-                )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <ColumnResizeHandle
-        value={controlsWidth}
-        min={CONTROLS_WIDTH_MIN}
-        max={CONTROLS_WIDTH_MAX}
-        onChange={onControlsWidthChange}
-        onReset={() => onControlsWidthChange(DEFAULT_APP_SETTINGS.controlsWidth)}
-        panelSide="start"
-        ariaLabel="Resize controls panel"
-        className={`hidden lg:block ${readingFocus ? 'reading-focus-dim' : ''}`}
-      />
 
       <aside
-        className={`min-w-0 w-full space-y-3 lg:shrink-0 lg:w-[var(--controls-width)] ${
-          readingFocus ? 'reading-focus-dim' : ''
-        }`}
+        className="min-w-0 w-full space-y-3 lg:shrink-0 lg:w-[var(--controls-width)] lg:min-h-0 lg:overflow-y-auto"
         style={{ ['--controls-width' as string]: `${controlsWidth}px` }}
       >
         <Controls
@@ -890,37 +809,234 @@ export function Reader({
           }}
         />
 
-        <div className="panel-card p-3 text-xs space-y-1.5">
-          <div className="flex items-center justify-between">
-            <span className="text-ink-400">Source</span>
-            <span className="font-mono text-ink-200 truncate max-w-[180px]" title={sourceName}>
+        {!immersive && (
+          <div className="space-y-2">
+            <FileUploader onFile={onFile} compact label="Open Markdown file" />
+            <RecentsList
+              documents={documents}
+              activeId={activeDocId}
+              title={sourceName}
+              onSelectDocument={onSelectDocument}
+              onNewDocument={onNewDocument}
+              onDeleteDocument={onDeleteDocument}
+              onOpenFile={openFilePicker}
+            />
+          </div>
+        )}
+      </aside>
+
+      <ColumnResizeHandle
+        value={controlsWidth}
+        min={CONTROLS_WIDTH_MIN}
+        max={CONTROLS_WIDTH_MAX}
+        onChange={onControlsWidthChange}
+        onReset={() => onControlsWidthChange(DEFAULT_APP_SETTINGS.controlsWidth)}
+        panelSide="end"
+        ariaLabel="Resize controls panel"
+        className="hidden lg:block"
+      />
+
+      <div
+        className={`relative flex min-w-0 min-h-[min(50vh,28rem)] flex-col panel-card lg:min-h-0 lg:flex-1 ${READER_MAX_H}`}
+      >
+        <ReaderChrome
+          inlineEdit={inlineEdit}
+          sourceName={sourceName}
+          onTitleChange={onTitleChange}
+          fontSize={fontSize}
+          onFontSizeChange={onFontSizeChange}
+          readingPreset={readingPreset}
+          onReadingPresetChange={onReadingPresetChange}
+          measureWidth={measureWidth}
+          onMeasureWidthChange={onMeasureWidthChange}
+          onPaste={() => void handlePasteClick()}
+          onOpenFile={openFilePicker}
+          onToggleInlineEdit={() => {
+            setInlineEdit((v) => {
+              if (!v) closeSearch()
+              return !v
+            })
+          }}
+          onOpenSearch={openSearch}
+          searchOpen={searchActive}
+          onToggleOutline={() => {
+            setOutlineOpen((v) => {
+              if (!v) closeSearch()
+              return !v
+            })
+          }}
+          outlineOpen={outlineOpen}
+          outlineAvailable={outlineAvailable}
+          listening={immersive}
+        />
+
+        {searchActive && (
+          <PreviewSearchBar
+            query={searchQuery}
+            onQueryChange={setSearchQuery}
+            matchCount={searchMatches.length}
+            currentIndex={searchMatches.length === 0 ? -1 : searchIndex}
+            onNext={goNextSearch}
+            onPrev={goPrevSearch}
+            onClose={closeSearch}
+            focusNonce={searchFocusNonce}
+          />
+        )}
+
+        {inlineEdit ? (
+          <div
+            className="reader-preview flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+            data-reading-preset={readingPreset}
+          >
+            <textarea
+              ref={inlineEditorRef}
+              id="md-inline-editor"
+              spellCheck={false}
+              value={markdown}
+              onChange={(e) => onMarkdownChange(e.target.value)}
+              onPaste={(e) => {
+                // Native insert-at-caret paste. Only treat a full-document replace
+                // when the editor is empty (same as "paste into empty preview").
+                if (markdown.trim()) return
+                const text = e.clipboardData.getData('text/plain')
+                if (!text.trim()) return
+                e.preventDefault()
+                replaceContentAndResetPlayback(text)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setInlineEdit(false)
+                }
+              }}
+              className="reader-editor-measure w-full min-h-0 flex-1 resize-none overflow-y-auto border-0 bg-transparent py-5 font-mono leading-[1.7] caret-amber-200 [tab-size:2] selection:bg-amber-300/25 focus:outline-none sm:py-6"
+              style={{
+                fontSize: `${fontSize}px`,
+                color: 'var(--reader-fg)',
+                ['--reader-measure' as string]: measureWidthCss(measureWidth),
+              }}
+              aria-label="Markdown source (inline editor)"
+              placeholder="Write or paste Markdown…"
+            />
+          </div>
+        ) : noPlayableText ? (
+          <ReaderEmptyState
+            onOpenFile={openFilePicker}
+            onWriteHere={() => setInlineEdit(true)}
+            onPasteFromClipboard={() => void handlePasteClick()}
+          />
+        ) : (
+          <div
+            className={
+              'relative flex min-h-0 min-w-0 flex-1 overflow-hidden' +
+              (showResumeNudge && resumeNudge ? ' pt-[4.5rem]' : '')
+            }
+          >
+            {showResumeNudge && resumeNudge && (
+              <ResumeBanner
+                at={resumeNudge.at}
+                total={resumeNudge.total}
+                onContinue={() => {
+                  setResumeBannerDismissedKey(resumeBannerKey)
+                  void player.play()
+                }}
+                onFromStart={onResumeFromStart}
+                onDismiss={() => setResumeBannerDismissedKey(resumeBannerKey)}
+              />
+            )}
+            {outlineAvailable && (
+              <PreviewOutline
+                items={outline}
+                open={outlineOpen}
+                onOpenChange={(open) => {
+                  if (open) closeSearch()
+                  setOutlineOpen(open)
+                }}
+                activeId={activeOutlineId}
+                onSelect={jumpToOutlineSection}
+              />
+            )}
+            <div
+              ref={previewFrameRef}
+              className="reader-preview relative min-h-0 min-w-0 flex-1 overflow-hidden"
+              data-reading-preset={readingPreset}
+            >
+              <MarkdownReader
+                reactNode={parsed.reactNode}
+                parseKey={parseKey}
+                onWordClick={onWordClick}
+                onActiveVisibilityChange={onActiveVisibilityChange}
+                ref={readerRef}
+                className="markdown-body reader-measure min-h-0 min-w-0 h-full max-h-full flex-1 overflow-y-auto py-6 sm:py-8"
+                style={{
+                  ['--reader-font-size' as string]: `${fontSize}px`,
+                  ['--reader-measure' as string]: measureWidthCss(measureWidth),
+                  fontSize: `${fontSize}px`,
+                }}
+              />
+              {!useCssHighlight &&
+                overlayBoxes.map((box, i) => (
+                  <div
+                    key={i}
+                    className="pointer-events-none absolute z-[5] rounded-sm bg-sky-300/20 ring-1 ring-sky-200/30"
+                    style={{
+                      top: box.top,
+                      left: box.left,
+                      width: box.width,
+                      height: box.height,
+                    }}
+                    aria-hidden
+                  />
+                ))}
+              {nowPlayingVisible && playhead.out && (
+                <div className="pointer-events-none absolute bottom-3 left-0 right-0 z-10 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => readerRef.current?.scrollToActiveNow()}
+                    title={
+                      playhead.out === 'above'
+                        ? 'Current word is above — scroll up'
+                        : 'Current word is below — scroll down'
+                    }
+                    className="pointer-events-auto flex items-center gap-2 rounded-full border border-amber-300/30 bg-ink-900/85 px-3.5 py-1.5 text-sm text-amber-100/95 shadow-md shadow-ink-950/30 backdrop-blur transition-colors hover:border-amber-200/50 hover:bg-ink-800/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50"
+                  >
+                    <PlayArrows direction={playhead.out} />
+                    <span>Now playing</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {!noPlayableText && !inlineEdit && (
+          <div className="flex shrink-0 items-center gap-3 border-t border-white/[0.05] px-4 py-1.5 text-[11px] text-ink-500">
+            <span className="min-w-0 flex-1 truncate font-mono text-ink-400" title={sourceName}>
               {sourceName}
             </span>
+            <span className="shrink-0 tabular-nums">
+              {parsed.words.length.toLocaleString()} word
+              {parsed.words.length === 1 ? '' : 's'}
+            </span>
+            <span className="shrink-0 text-ink-600" aria-hidden>
+              ·
+            </span>
+            <span className="shrink-0 tabular-nums">
+              {parsed.chunks.length.toLocaleString()} chunk
+              {parsed.chunks.length === 1 ? '' : 's'}
+            </span>
+            <button
+              type="button"
+              onClick={() => setHelpOpen(true)}
+              title="Keyboard shortcuts (?)"
+              aria-label="Keyboard shortcuts"
+              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-transparent font-mono text-[11px] text-ink-500 transition-colors hover:border-white/10 hover:bg-white/[0.06] hover:text-ink-200 focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-300/40"
+            >
+              ?
+            </button>
           </div>
-          <div className="flex items-center justify-between">
-            <span className="text-ink-400">Words</span>
-            <span className="font-mono text-ink-200">{parsed.words.length}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-ink-400">Chunks</span>
-            <span className="font-mono text-ink-200">{parsed.chunks.length}</span>
-          </div>
-        </div>
-
-        <div className="panel-card p-3 text-[11px] text-ink-400 leading-relaxed">
-          <kbd className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-ink-200">Space</kbd>{' '}
-          play / pause ·{' '}
-          <kbd className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-ink-200">⌘F</kbd> find ·{' '}
-          <kbd className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-ink-200">⌘V</kbd>{' '}
-          paste ·{' '}
-          <kbd className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-ink-200">T</kbd>{' '}
-          teleprompter ·{' '}
-          <kbd className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-ink-200">Esc</kbd> stop ·{' '}
-          <kbd className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-ink-200">[</kbd>/
-          <kbd className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-ink-200">]</kbd> prev /
-          next chunk
-        </div>
-      </aside>
+        )}
+      </div>
     </div>
   )
 }

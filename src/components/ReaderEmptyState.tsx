@@ -1,13 +1,11 @@
 type Props = {
-  onOpenFileTab: () => void
-  onOpenPasteTab: () => void
+  onOpenFile: () => void
   onWriteHere: () => void
   onPasteFromClipboard: () => void
 }
 
 export function ReaderEmptyState({
-  onOpenFileTab,
-  onOpenPasteTab,
+  onOpenFile,
   onWriteHere,
   onPasteFromClipboard,
 }: Props) {
@@ -34,17 +32,17 @@ export function ReaderEmptyState({
       <div>
         <p className="text-sm font-medium text-ink-200">Nothing to read yet</p>
         <p className="mt-1 max-w-[20rem] text-xs text-ink-500">
-          Add something to hear — from a file, the sidebar, or the pen editor. Everything stays on
-          this device.
+          Drop a Markdown file onto the window, paste from the clipboard, or write here. Everything
+          stays on this device.
         </p>
       </div>
       <div className="flex w-full max-w-sm flex-col gap-2 sm:flex-row sm:justify-center">
         <button
           type="button"
-          onClick={onOpenFileTab}
+          onClick={onOpenFile}
           className="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-medium text-ink-100 transition hover:bg-white/10"
         >
-          Upload file
+          Open file
         </button>
         <button
           type="button"
@@ -52,13 +50,6 @@ export function ReaderEmptyState({
           className="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-medium text-ink-100 transition hover:bg-white/10"
         >
           Paste
-        </button>
-        <button
-          type="button"
-          onClick={onOpenPasteTab}
-          className="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-medium text-ink-100 transition hover:bg-white/10"
-        >
-          Edit / paste
         </button>
         <button
           type="button"

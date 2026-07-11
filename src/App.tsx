@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Reader } from './components/Reader'
-import { SourcePanel } from './components/SourcePanel'
-import { ColumnResizeHandle } from './components/ColumnResizeHandle'
+import { FileDropOverlay } from './components/FileDropOverlay'
 import {
   StorageError,
   createDocument,
@@ -18,15 +17,12 @@ import {
 import {
   loadAppSettings,
   saveAppSettings,
-  SIDEBAR_WIDTH_MIN,
-  SIDEBAR_WIDTH_MAX,
-  DEFAULT_APP_SETTINGS,
 } from './lib/appSettings'
 import { useParsedDocument, wordMetaFromParsed } from './lib/useParsedDocument'
 
 const SAMPLE_MD = `# Welcome to **md to voice**
 
-Use the **File** tab to upload a .md file, or **Edit / paste** in the sidebar. You can also use the **pen** button on the preview card to edit in place. Then press **Play** to hear it read aloud while each word lights up in sync.
+Drop a .md file onto the window, paste with **⌘V**, or use the **pen** to edit in place. Then press **Play** to hear it read aloud while each word lights up in sync.
 
 ## How it works
 
@@ -39,7 +35,7 @@ Use the **File** tab to upload a .md file, or **Edit / paste** in the sidebar. Y
 
 Your documents and **name** are saved in the browser. On return, the **last one you played** (or most recently saved) opens automatically.
 
-Try changing the voice on the right, then hit play. You can pause with the **spacebar** at any time.
+Try changing the voice on the left, then hit play. You can pause with the **spacebar** at any time.
 `
 
 const SAVE_MS = 400
@@ -59,12 +55,13 @@ type BootState =
 
 export default function App() {
   const [boot, setBoot] = useState<BootState>({ phase: 'loading' })
-  const [sourceTab, setSourceTab] = useState<'file' | 'edit'>('file')
-  const [sidebarWidth, setSidebarWidth] = useState(() => loadAppSettings().sidebarWidth)
   const [controlsWidth, setControlsWidth] = useState(() => loadAppSettings().controlsWidth)
   const [fontSize, setFontSize] = useState(() => loadAppSettings().fontSize)
+  const [readingPreset, setReadingPreset] = useState(() => loadAppSettings().readingPreset)
+  const [measureWidth, setMeasureWidth] = useState(() => loadAppSettings().measureWidth)
   const [storageBanner, setStorageBanner] = useState<string | null>(null)
   const [readingFocus, setReadingFocus] = useState(false)
+  const [dropError, setDropError] = useState<string | null>(null)
 
   const [docId, setDocId] = useState('')
   const [title, setTitle] = useState('')
@@ -170,11 +167,11 @@ export default function App() {
 
   useEffect(() => {
     const t = setTimeout(
-      () => saveAppSettings({ sidebarWidth, controlsWidth, fontSize }),
+      () => saveAppSettings({ controlsWidth, fontSize, readingPreset, measureWidth }),
       LAYOUT_SAVE_MS,
     )
     return () => clearTimeout(t)
-  }, [sidebarWidth, controlsWidth, fontSize])
+  }, [controlsWidth, fontSize, readingPreset, measureWidth])
 
   const applyDocument = useCallback((d: StoredDocument) => {
     setDocId(d.id)
@@ -223,14 +220,6 @@ export default function App() {
       .catch(reportStorageError)
     setOpenResume(0)
   }, [patchDocInList, reportStorageError])
-
-  const replaceMarkdownContent = useCallback(
-    (text: string) => {
-      onResumeReset()
-      setMarkdown(text)
-    },
-    [onResumeReset],
-  )
 
   const selectDocument = useCallback(
     async (id: string) => {
@@ -356,114 +345,115 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden">
-      <header className="border-b border-white/5 bg-ink-950/40 backdrop-blur shrink-0">
-        <div className="w-full px-4 sm:px-6 py-4 flex items-center justify-between">
+    <div className={`flex h-screen flex-col overflow-hidden ${readingFocus ? 'is-immersive' : ''}`}>
+      <FileDropOverlay
+        onFile={(name, text) => {
+          setDropError(null)
+          void onFile(name, text)
+        }}
+        onError={(message) => setDropError(message)}
+      />
+
+      <header
+        className={`border-b border-white/5 bg-ink-950/40 backdrop-blur shrink-0 transition-[padding] duration-300 ${
+          readingFocus ? 'py-2' : ''
+        }`}
+      >
+        <div
+          className={`w-full px-4 sm:px-6 flex items-center justify-between ${
+            readingFocus ? 'py-0' : 'py-4'
+          }`}
+        >
           <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-amber-300 to-pink-400 grid place-items-center text-ink-950 font-black">
+            <div
+              className={`rounded-lg bg-gradient-to-br from-amber-300 to-pink-400 grid place-items-center text-ink-950 font-black ${
+                readingFocus ? 'h-7 w-7 text-[10px]' : 'h-9 w-9'
+              }`}
+            >
               md
             </div>
-            <div>
-              <h1 className="text-lg font-semibold tracking-tight">md to voice</h1>
-              <p className="text-xs text-ink-400">Karaoke-style Markdown reader · Kokoro TTS · Pretext</p>
-            </div>
+            {!readingFocus && (
+              <div>
+                <h1 className="text-lg font-semibold tracking-tight">md to voice</h1>
+                <p className="text-xs text-ink-400">
+                  Karaoke-style Markdown reader · Kokoro TTS · Pretext
+                </p>
+              </div>
+            )}
+            {readingFocus && (
+              <p className="text-sm font-medium tracking-tight text-ink-200">md to voice</p>
+            )}
           </div>
-          <a
-            href="https://github.com/hexgrad/kokoro"
-            target="_blank"
-            rel="noreferrer"
-            className="text-xs text-ink-400 hover:text-ink-200"
-          >
-            Powered by kokoro-js
-          </a>
+          {!readingFocus && (
+            <a
+              href="https://github.com/hexgrad/kokoro"
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-ink-400 hover:text-ink-200"
+            >
+              Powered by kokoro-js
+            </a>
+          )}
         </div>
       </header>
 
-      {storageBanner && (
+      {(storageBanner || dropError) && (
         <div
           className="flex items-start justify-between gap-3 border-b border-red-500/30 bg-red-500/10 px-4 py-2 text-xs text-red-100 sm:px-6"
           role="alert"
         >
-          <p className="min-w-0 leading-relaxed">{storageBanner}</p>
+          <p className="min-w-0 leading-relaxed">{storageBanner ?? dropError}</p>
           <button
             type="button"
             className="shrink-0 rounded px-2 py-0.5 text-red-200/90 hover:bg-red-500/20"
-            onClick={() => setStorageBanner(null)}
-            aria-label="Dismiss storage error"
+            onClick={() => {
+              setStorageBanner(null)
+              setDropError(null)
+            }}
+            aria-label="Dismiss error"
           >
             ×
           </button>
         </div>
       )}
 
-      <main className="flex-1 w-full min-h-0 py-3 sm:py-4 flex flex-col gap-4 lg:flex-row lg:gap-0">
-        <aside
-          className={`space-y-4 min-w-0 w-full lg:shrink-0 lg:w-[var(--sidebar-width)] px-3 sm:px-4 lg:px-0 lg:pl-4 ${
-            readingFocus ? 'reading-focus-dim' : ''
-          }`}
-          style={{ ['--sidebar-width' as string]: `${sidebarWidth}px` }}
-        >
-          <SourcePanel
-            markdown={markdown}
-            title={title}
-            onTitleChange={setTitle}
-            onFile={(name, text) => void onFile(name, text)}
-            onMarkdownFromEdit={setMarkdown}
-            onMarkdownPaste={replaceMarkdownContent}
-            sourceTab={sourceTab}
-            onSourceTab={setSourceTab}
-            documents={documents}
-            activeId={docId}
-            onSelectDocument={(id) => void selectDocument(id)}
-            onNewDocument={() => void newDocument()}
-            onDeleteDocument={(id) => void onDeleteDocument(id)}
-            fontSize={fontSize}
-            onFontSizeChange={setFontSize}
-            wordCount={parsed.words.length}
-            resumeWordIdx={
-              documents.find((d) => d.id === docId)?.resumeWordIdx ?? openResume
-            }
-          />
-        </aside>
-
-        <ColumnResizeHandle
-          value={sidebarWidth}
-          min={SIDEBAR_WIDTH_MIN}
-          max={SIDEBAR_WIDTH_MAX}
-          onChange={setSidebarWidth}
-          onReset={() => setSidebarWidth(DEFAULT_APP_SETTINGS.sidebarWidth)}
-          panelSide="end"
-          ariaLabel="Resize sidebar"
-          className={`hidden lg:block ${readingFocus ? 'reading-focus-dim' : ''}`}
+      <main className="flex-1 w-full min-h-0 py-3 sm:py-4 flex flex-col px-3 sm:px-4">
+        <Reader
+          activeDocId={docId}
+          openResume={openResume}
+          onResumeFromPlayback={onResumeFromPlayback}
+          onResumeFlush={onResumeFlush}
+          onResumeReset={onResumeReset}
+          markdown={markdown}
+          parsed={parsed}
+          sourceName={title}
+          onTitleChange={setTitle}
+          onMarkdownChange={setMarkdown}
+          onFile={(name, text) => void onFile(name, text)}
+          documents={documents}
+          onSelectDocument={(id) => void selectDocument(id)}
+          onNewDocument={() => void newDocument()}
+          onDeleteDocument={(id) => void onDeleteDocument(id)}
+          onPlaybackBegan={onPlaybackBegan}
+          onReadingFocusChange={setReadingFocus}
+          fontSize={fontSize}
+          onFontSizeChange={setFontSize}
+          readingPreset={readingPreset}
+          onReadingPresetChange={setReadingPreset}
+          measureWidth={measureWidth}
+          onMeasureWidthChange={setMeasureWidth}
+          controlsWidth={controlsWidth}
+          onControlsWidthChange={setControlsWidth}
         />
-
-        <section className="min-w-0 flex-1 flex flex-col px-3 sm:px-4 lg:px-0 lg:pr-4">
-          <Reader
-            activeDocId={docId}
-            openResume={openResume}
-            onResumeFromPlayback={onResumeFromPlayback}
-            onResumeFlush={onResumeFlush}
-            onResumeReset={onResumeReset}
-            markdown={markdown}
-            parsed={parsed}
-            sourceName={title}
-            onTitleChange={setTitle}
-            onMarkdownChange={setMarkdown}
-            onOpenFileTab={() => setSourceTab('file')}
-            onOpenPasteTab={() => setSourceTab('edit')}
-            onPlaybackBegan={onPlaybackBegan}
-            onReadingFocusChange={setReadingFocus}
-            fontSize={fontSize}
-            onFontSizeChange={setFontSize}
-            controlsWidth={controlsWidth}
-            onControlsWidthChange={setControlsWidth}
-          />
-        </section>
       </main>
 
-      <footer className="border-t border-white/5 py-3 text-center text-xs text-ink-500 shrink-0">
+      <footer
+        className={`border-t border-white/5 text-center text-xs text-ink-500 shrink-0 transition-all duration-300 ${
+          readingFocus ? 'max-h-0 overflow-hidden border-0 py-0 opacity-0' : 'py-3 opacity-100'
+        }`}
+      >
         Runs in your browser; the app shell is available offline after the first visit. TTS model (~160 MB)
-        downloads on first use and is kept in the browser cache.
+        downloads on first use and is kept in the browser cache. Drop a .md file anywhere to open it.
       </footer>
     </div>
   )

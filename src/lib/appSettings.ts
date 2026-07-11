@@ -1,4 +1,11 @@
 import type { RecentsSort } from './documentStore'
+import {
+  DEFAULT_READING_PRESET,
+  MEASURE_WIDTH_DEFAULT,
+  clampMeasureWidth,
+  isReadingPresetId,
+  type ReadingPresetId,
+} from './readingPresets'
 
 const KEY = 'md-to-voice:v1:appSettings'
 
@@ -7,18 +14,22 @@ export const DEFAULT_APP_SETTINGS = {
   speed: 1,
   volume: 1,
   recentsSort: 'played' as RecentsSort,
-  fontSize: 16,
+  fontSize: 19,
   sidebarWidth: 320,
   controlsWidth: 280,
   /** Apple Lyrics–style centered teleprompter while speaking. Opt-in. */
   teleprompterMode: false,
+  /** Preview panel reading theme (typography + contrast). */
+  readingPreset: DEFAULT_READING_PRESET as ReadingPresetId,
+  /** Reading column width in `ch` (100 = fill panel). */
+  measureWidth: MEASURE_WIDTH_DEFAULT,
 } as const
 
 export const VOLUME_MIN = 0
 export const VOLUME_MAX = 1
 
-export const FONT_SIZE_MIN = 12
-export const FONT_SIZE_MAX = 28
+export const FONT_SIZE_MIN = 14
+export const FONT_SIZE_MAX = 32
 export const SIDEBAR_WIDTH_MIN = 260
 export const SIDEBAR_WIDTH_MAX = 720
 export const CONTROLS_WIDTH_MIN = 220
@@ -33,6 +44,8 @@ export type AppSettings = {
   sidebarWidth: number
   controlsWidth: number
   teleprompterMode: boolean
+  readingPreset: ReadingPresetId
+  measureWidth: number
 }
 
 function clampVolume(n: number): number {
@@ -84,6 +97,13 @@ export function loadAppSettings(): AppSettings {
       typeof p.teleprompterMode === 'boolean'
         ? p.teleprompterMode
         : DEFAULT_APP_SETTINGS.teleprompterMode
+    const readingPreset = isReadingPresetId(p.readingPreset)
+      ? p.readingPreset
+      : DEFAULT_APP_SETTINGS.readingPreset
+    const measureWidth =
+      typeof p.measureWidth === 'number'
+        ? clampMeasureWidth(p.measureWidth)
+        : DEFAULT_APP_SETTINGS.measureWidth
     return {
       voice: typeof p.voice === 'string' && p.voice.length > 0 ? p.voice : DEFAULT_APP_SETTINGS.voice,
       speed: Math.min(1.5, Math.max(0.5, sp)),
@@ -93,6 +113,8 @@ export function loadAppSettings(): AppSettings {
       sidebarWidth,
       controlsWidth,
       teleprompterMode,
+      readingPreset,
+      measureWidth,
     }
   } catch {
     return { ...DEFAULT_APP_SETTINGS }
@@ -120,6 +142,9 @@ export function saveAppSettings(patch: Partial<AppSettings>): void {
           : prev.controlsWidth,
       teleprompterMode:
         typeof patch.teleprompterMode === 'boolean' ? patch.teleprompterMode : prev.teleprompterMode,
+      readingPreset: isReadingPresetId(patch.readingPreset) ? patch.readingPreset : prev.readingPreset,
+      measureWidth:
+        typeof patch.measureWidth === 'number' ? clampMeasureWidth(patch.measureWidth) : prev.measureWidth,
     }
     if (next.speed < 0.5) next.speed = 0.5
     if (next.speed > 1.5) next.speed = 1.5

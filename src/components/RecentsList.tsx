@@ -10,8 +10,7 @@ type Props = {
   onSelectDocument: (id: string) => void
   onNewDocument: () => void
   onDeleteDocument: (id: string) => void
-  onOpenFileTab: () => void
-  onOpenEditTab: () => void
+  onOpenFile: () => void
 }
 
 function formatWhen(ts: number): string {
@@ -61,8 +60,7 @@ export function RecentsList({
   onSelectDocument,
   onNewDocument,
   onDeleteDocument,
-  onOpenFileTab,
-  onOpenEditTab,
+  onOpenFile,
 }: Props) {
   const [recentsSearch, setRecentsSearch] = useState('')
   const [recentsSort, setRecentsSort] = useState<RecentsSort>(() => loadAppSettings().recentsSort)
@@ -274,24 +272,16 @@ export function RecentsList({
           <div className="rounded-xl border border-dashed border-white/10 bg-ink-950/25 px-4 py-6 text-center">
             <p className="text-sm text-ink-300">No saved documents</p>
             <p className="mt-1.5 text-xs text-ink-500 leading-relaxed">
-              Add a <span className="text-ink-300">.md</span> file, or use{' '}
-              <span className="text-ink-300">Edit / paste</span>. New items appear here with playback
-              position.
+              Drop a <span className="text-ink-300">.md</span> file onto the window, or open one
+              below. Playback position is saved here.
             </p>
             <div className="mt-4 flex flex-col gap-2">
               <button
                 type="button"
-                onClick={onOpenFileTab}
+                onClick={onOpenFile}
                 className="rounded-lg border border-white/10 bg-white/[0.05] py-1.5 text-xs text-ink-200 transition hover:bg-white/10"
               >
-                File tab
-              </button>
-              <button
-                type="button"
-                onClick={onOpenEditTab}
-                className="rounded-lg border border-white/10 bg-white/[0.05] py-1.5 text-xs text-ink-200 transition hover:bg-white/10"
-              >
-                Edit / paste
+                Open file
               </button>
             </div>
           </div>
