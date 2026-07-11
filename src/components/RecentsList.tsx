@@ -169,21 +169,21 @@ export function RecentsList({
 
   return (
     <>
-      <section className="space-y-2.5" aria-labelledby="recents-heading">
+      <section className="space-y-2" aria-labelledby="recents-heading">
         <div className="flex items-center justify-between gap-2">
           <h2
             id="recents-heading"
-            className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-500"
+            className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-500"
           >
-            <IconStack className="h-3.5 w-3.5 text-ink-400" />
-            Recents
+            <IconStack className="h-3 w-3 text-ink-400" />
+            Library
           </h2>
           <button
             type="button"
             onClick={onNewDocument}
-            className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.05] px-2 py-1 text-[11px] font-medium text-ink-200 transition hover:border-amber-300/20 hover:bg-amber-300/10 hover:text-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50"
+            className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-ink-300 transition hover:bg-amber-300/10 hover:text-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50"
           >
-            <IconPlus className="h-3.5 w-3.5" />
+            <IconPlus className="h-3 w-3" />
             New
           </button>
         </div>
@@ -192,10 +192,10 @@ export function RecentsList({
           <div className="flex min-w-0 items-center gap-1.5">
             <div className="relative min-w-0 flex-1">
               <label htmlFor="recents-search" className="sr-only">
-                Search recents
+                Search library
               </label>
-              <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-500">
-                <IconSearch className="h-3.5 w-3.5" />
+              <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-ink-500">
+                <IconSearch className="h-3 w-3" />
               </span>
               <input
                 id="recents-search"
@@ -204,7 +204,7 @@ export function RecentsList({
                 onChange={(e) => setRecentsSearch(e.target.value)}
                 autoComplete="off"
                 placeholder="Search…"
-                className="w-full rounded-lg border border-white/10 bg-ink-950/40 py-1.5 pl-8 pr-2.5 text-xs text-ink-100 placeholder-ink-500 focus:outline-none focus:ring-2 focus:ring-amber-300/30"
+                className="w-full rounded-md border border-white/[0.07] bg-ink-950/30 py-1 pl-7 pr-2 text-[11px] text-ink-100 placeholder-ink-500 focus:outline-none focus:ring-2 focus:ring-amber-300/30"
               />
             </div>
             <div className="relative shrink-0" ref={sortMenuWrapRef}>
@@ -220,10 +220,10 @@ export function RecentsList({
                 title={`Sort: ${recentsSortButtonLabel(recentsSort)}`}
                 aria-label={`Change sort. Current: ${recentsSortButtonLabel(recentsSort)}.`}
                 onClick={() => setSortMenuOpen((o) => !o)}
-                className="grid h-8 w-8 place-items-center rounded-lg border border-white/10 bg-ink-950/40 text-ink-300 transition hover:border-white/15 hover:bg-white/[0.05] hover:text-ink-100 focus:outline-none focus:ring-2 focus:ring-amber-300/30 aria-expanded:bg-white/[0.04]"
+                className="grid h-7 w-7 place-items-center rounded-md border border-white/[0.07] bg-ink-950/30 text-ink-400 transition hover:border-white/15 hover:bg-white/[0.05] hover:text-ink-100 focus:outline-none focus:ring-2 focus:ring-amber-300/30 aria-expanded:bg-white/[0.04]"
               >
                 <IconSortAction
-                  className={'h-3.5 w-3.5 ' + (sortMenuOpen ? 'text-amber-200/90' : '')}
+                  className={'h-3 w-3 ' + (sortMenuOpen ? 'text-amber-200/90' : '')}
                   aria-hidden
                 />
               </button>
@@ -269,33 +269,30 @@ export function RecentsList({
         )}
 
         {documents.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-white/10 bg-ink-950/25 px-4 py-6 text-center">
-            <p className="text-sm text-ink-300">No saved documents</p>
-            <p className="mt-1.5 text-xs text-ink-500 leading-relaxed">
-              Drop a <span className="text-ink-300">.md</span> file onto the window, or open one
-              below. Playback position is saved here.
+          <div className="px-1 py-3 text-center">
+            <p className="text-xs text-ink-400">No saved documents</p>
+            <p className="mt-1 text-[11px] text-ink-500 leading-relaxed">
+              Drop a <span className="text-ink-300">.md</span> onto the window, or open one above.
             </p>
-            <div className="mt-4 flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={onOpenFile}
-                className="rounded-lg border border-white/10 bg-white/[0.05] py-1.5 text-xs text-ink-200 transition hover:bg-white/10"
-              >
-                Open file
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={onOpenFile}
+              className="mt-3 rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-ink-200 transition hover:bg-white/10"
+            >
+              Open file
+            </button>
           </div>
         ) : recentsVisible.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-white/10 bg-ink-950/25 px-4 py-5 text-center">
-            <p className="text-sm text-ink-300">No matches</p>
-            <p className="mt-1.5 text-xs text-ink-500">
-              Try another search, or clear the search box to see all {documents.length} document
+          <div className="px-1 py-3 text-center">
+            <p className="text-xs text-ink-400">No matches</p>
+            <p className="mt-1 text-[11px] text-ink-500">
+              Clear search to see all {documents.length} document
               {documents.length === 1 ? '' : 's'}.
             </p>
           </div>
         ) : (
           <ul
-            className="max-h-[min(50vh,20rem)] space-y-1.5 overflow-y-auto rounded-xl border border-white/10 bg-ink-950/30 p-1.5"
+            className="studio-shelf-list max-h-[min(40vh,16rem)] space-y-0.5 overflow-y-auto"
             aria-label="Document history"
           >
             {recentsVisible.map((d) => {
@@ -307,40 +304,40 @@ export function RecentsList({
                 : `Saved ${formatWhen(d.updatedAt)}`
               let resumeLabel: string | null
               if (rv.showBar) {
-                resumeLabel = `~${rv.pct}% read`
+                resumeLabel = `~${rv.pct}%`
               } else {
                 resumeLabel =
                   'hint' in rv && rv.hint === 'stale' && d.resumeWordIdx && d.resumeWordIdx > 0
-                    ? 'Resume saved'
+                    ? 'Resume'
                     : null
               }
               return (
                 <li key={d.id} className="group">
                   <div
                     className={
-                      'flex items-stretch gap-0.5 overflow-hidden rounded-lg border transition ' +
+                      'flex items-stretch gap-0.5 overflow-hidden rounded-lg transition ' +
                       (isActive
-                        ? 'border-amber-300/30 bg-amber-300/10 shadow-sm shadow-amber-900/20'
-                        : 'border-transparent bg-white/[0.02] hover:border-white/10 hover:bg-white/[0.04]')
+                        ? 'bg-amber-300/10 ring-1 ring-amber-300/25'
+                        : 'hover:bg-white/[0.04]')
                     }
                   >
                     <button
                       type="button"
                       onClick={() => onSelectDocument(d.id)}
-                      className="min-w-0 flex-1 text-left pl-2.5 pr-1 py-2.5"
+                      className="min-w-0 flex-1 text-left pl-2 pr-1 py-1.5"
                       title={d.title}
                     >
                       <div
                         className={
-                          'truncate font-mono text-xs ' +
+                          'truncate font-mono text-[11px] ' +
                           (isActive ? 'text-amber-100' : 'text-ink-100')
                         }
                       >
                         {displayTitle}
                       </div>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] text-ink-500">
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[9px] text-ink-500">
                         <span className="inline-flex items-center gap-0.5">
-                          <IconClock className="h-3 w-3 opacity-80" />
+                          <IconClock className="h-2.5 w-2.5 opacity-80" />
                           {when}
                         </span>
                         {resumeLabel && (
@@ -354,7 +351,7 @@ export function RecentsList({
                       </div>
                       {rv.showBar && (
                         <div
-                          className="mt-2 h-1 overflow-hidden rounded-full bg-white/10"
+                          className="mt-1.5 h-0.5 overflow-hidden rounded-full bg-white/10"
                           role="progressbar"
                           aria-valuenow={rv.pct}
                           aria-valuemin={0}
@@ -374,10 +371,10 @@ export function RecentsList({
                         setPendingDelete({ id: d.id, title: d.id === activeId ? title : d.title })
                       }}
                       title="Remove from this device"
-                      className="shrink-0 self-stretch border-l border-white/5 px-1.5 text-ink-500 transition hover:bg-red-500/10 hover:text-red-200 focus:opacity-100 focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-300/50 sm:opacity-50 sm:group-hover:opacity-100"
+                      className="shrink-0 self-stretch px-1.5 text-ink-500 transition hover:bg-red-500/10 hover:text-red-200 focus:opacity-100 focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-300/50 sm:opacity-0 sm:group-hover:opacity-100"
                       aria-label={`Remove ${d.title} from this device`}
                     >
-                      <IconTrash className="mx-0.5 h-3.5 w-3.5" />
+                      <IconTrash className="mx-0.5 h-3 w-3" />
                     </button>
                   </div>
                 </li>

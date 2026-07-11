@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useEffect, useRef, type RefObject } from 'react'
 import type { Device, VoiceInfo } from '../lib/tts/types'
 import type { LoadProgress, PlayerStatus } from '../lib/usePlayer'
 import { AudioVisualizer } from './AudioVisualizer'
@@ -63,8 +63,6 @@ export function Controls({
   const showProgress =
     (status === 'playing' || status === 'paused' || status === 'finished') && totalWords > 0
 
-  const [showWaveform, setShowWaveform] = useState(false)
-
   const ratio = progress.ratio ?? 0
   const ratioPct = Math.min(100, Math.max(0, ratio * 100))
   const volumePct = Math.round(volume * 100)
@@ -86,19 +84,49 @@ export function Controls({
 
   const chunkNumber = Math.max(0, currentChunkIdx + 1)
 
+  const selectedVoiceMeta = voices.find((v) => v.id === voice) ?? null
+
+  const playLabel = isLoading
+    ? 'Loading…'
+    : isPlaying
+      ? 'Pause'
+      : status === 'paused'
+        ? 'Resume'
+        : status === 'finished'
+          ? 'Again'
+          : 'Play'
+
   const toggleMute = () => {
     if (isMuted) onVolume(lastVolumeRef.current)
     else onVolume(0)
   }
 
   return (
-    <div className="panel-card p-4 space-y-3">
-      <div className="flex items-center gap-2">
+    <div className="space-y-4">
+      {/* Stage */}
+      <section className="space-y-2" aria-label="Playback stage">
+        <AudioVisualizer
+          analyserRef={analyserRef}
+          playerStatus={status}
+          variant="stage"
+        />
+        <div className="flex items-center justify-between gap-2 px-0.5">
+          <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-ink-500">
+            Console
+          </span>
+          {device ? (
+            <span className="font-mono text-[10px] tabular-nums text-ink-400">{device}</span>
+          ) : null}
+        </div>
+      </section>
+
+      {/* Transport */}
+      <section className="studio-transport" aria-label="Transport">
         <button
           type="button"
           onClick={onPrevChunk}
           disabled={!canSkip}
-          className="inline-flex h-[42px] w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-ink-200 transition-all hover:border-white/20 hover:bg-white/10 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
+          className="studio-transport-side"
           title="Previous chunk (["
           aria-label="Previous chunk"
         >
@@ -108,35 +136,23 @@ export function Controls({
           type="button"
           onClick={isPlaying ? onPause : onPlay}
           disabled={isLoading}
-          className={`flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 ${
-            isPlaying
-              ? 'bg-amber-300 text-ink-950 shadow-lg shadow-amber-300/20 hover:bg-amber-200'
-              : 'bg-amber-300/90 text-ink-950 shadow-lg shadow-amber-300/15 hover:bg-amber-200'
-          }`}
+          className={`studio-transport-play ${isPlaying ? 'is-playing' : ''}`}
           title={isPlaying ? 'Pause (space)' : 'Play (space)'}
         >
           {isLoading ? (
             <SpinnerIcon />
           ) : isPlaying ? (
-            <PauseIcon />
+            <PauseIcon className="h-5 w-5" />
           ) : (
-            <PlayIcon />
+            <PlayIcon className="h-5 w-5" />
           )}
-          {isLoading
-            ? 'Loading model…'
-            : isPlaying
-              ? 'Pause'
-              : status === 'paused'
-                ? 'Resume'
-                : status === 'finished'
-                  ? 'Play again'
-                  : 'Play'}
+          <span>{playLabel}</span>
         </button>
         <button
           type="button"
           onClick={onNextChunk}
           disabled={!canSkip}
-          className="inline-flex h-[42px] w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-ink-200 transition-all hover:border-white/20 hover:bg-white/10 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
+          className="studio-transport-side"
           title="Next chunk (])"
           aria-label="Next chunk"
         >
@@ -146,12 +162,13 @@ export function Controls({
           type="button"
           onClick={onStop}
           disabled={!canStop && !canPause}
-          className="inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-2.5 text-sm text-ink-200 transition-all hover:border-white/20 hover:bg-white/10 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
+          className="studio-transport-stop"
           title="Stop (Esc)"
+          aria-label="Stop"
         >
           <StopIcon />
         </button>
-      </div>
+      </section>
 
       {isLoading && (
         <div className="space-y-1.5">
@@ -159,9 +176,9 @@ export function Controls({
             <span>Downloading Kokoro</span>
             <span className="font-mono tabular-nums">{ratioPct.toFixed(0)}%</span>
           </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/5">
+          <div className="studio-meter-track">
             <div
-              className="h-full rounded-full bg-amber-300/80 transition-[width] duration-300 ease-out"
+              className="studio-meter-fill"
               style={{ width: `${ratioPct}%` }}
             />
           </div>
@@ -171,169 +188,153 @@ export function Controls({
         </div>
       )}
 
-      {showProgress && (
-        <div className="space-y-1">
-          <div className="flex items-center justify-between text-[10px] text-ink-400">
-            <span>Progress</span>
-            <span className="font-mono tabular-nums text-ink-300">
-              {heardOrdinal} / {totalWords}
-              {totalChunks > 1 && (
-                <span className="text-ink-500">
-                  {' '}
-                  · {status === 'finished' ? totalChunks : chunkNumber}/{totalChunks}
-                </span>
-              )}
-            </span>
+      {/* Meters */}
+      <section className="space-y-3" aria-label="Meters">
+        {showProgress && (
+          <div className="space-y-1">
+            <div className="flex items-center justify-between text-[10px] text-ink-400">
+              <span>Progress</span>
+              <span className="font-mono tabular-nums text-ink-300">
+                {heardOrdinal} / {totalWords}
+                {totalChunks > 1 && (
+                  <span className="text-ink-500">
+                    {' '}
+                    · {status === 'finished' ? totalChunks : chunkNumber}/{totalChunks}
+                  </span>
+                )}
+              </span>
+            </div>
+            <div className="studio-meter-track">
+              <div
+                className="studio-meter-fill"
+                style={{ width: `${status === 'finished' ? 100 : wordPct}%` }}
+              />
+            </div>
           </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/5">
-            <div
-              className="h-full rounded-full bg-amber-300/85 transition-[width] duration-300 ease-out"
-              style={{ width: `${status === 'finished' ? 100 : wordPct}%` }}
-            />
-          </div>
-        </div>
-      )}
+        )}
 
-      <div className="space-y-3 border-t border-white/[0.06] pt-3">
-        <div>
-          <div className="mb-1.5 flex items-center justify-between">
-            <label htmlFor="tts-volume" className="text-xs text-ink-400">
-              Volume
-            </label>
-            <span className="text-xs font-mono tabular-nums text-ink-300">
-              {isMuted ? 'Muted' : `${volumePct}%`}
-            </span>
+        <div className="grid grid-cols-1 gap-3">
+          <div>
+            <div className="mb-1 flex items-center justify-between">
+              <label htmlFor="tts-volume" className="text-[10px] font-medium uppercase tracking-wider text-ink-500">
+                Volume
+              </label>
+              <span className="text-[11px] font-mono tabular-nums text-ink-300">
+                {isMuted ? 'Muted' : `${volumePct}%`}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={toggleMute}
+                className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition-all active:scale-95 ${
+                  isMuted
+                    ? 'border-amber-300/40 bg-amber-300/15 text-amber-200'
+                    : 'border-white/10 bg-white/[0.04] text-ink-300 hover:border-white/20 hover:bg-white/10'
+                }`}
+                title={isMuted ? 'Unmute' : 'Mute'}
+                aria-label={isMuted ? 'Unmute' : 'Mute'}
+                aria-pressed={isMuted}
+              >
+                {isMuted ? <VolumeMutedIcon /> : <VolumeIcon />}
+              </button>
+              <input
+                id="tts-volume"
+                name="volume"
+                type="range"
+                min={0}
+                max={1}
+                step={0.01}
+                value={volume}
+                onChange={(e) => onVolume(Number(e.target.value))}
+                className="control-range min-w-0 flex-1"
+              />
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={toggleMute}
-              className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-all active:scale-95 ${
-                isMuted
-                  ? 'border-amber-300/40 bg-amber-300/15 text-amber-200'
-                  : 'border-white/10 bg-white/[0.04] text-ink-300 hover:border-white/20 hover:bg-white/10'
-              }`}
-              title={isMuted ? 'Unmute' : 'Mute'}
-              aria-label={isMuted ? 'Unmute' : 'Mute'}
-              aria-pressed={isMuted}
-            >
-              {isMuted ? <VolumeMutedIcon /> : <VolumeIcon />}
-            </button>
+
+          <div>
+            <div className="mb-1 flex items-center justify-between">
+              <label htmlFor="tts-speed" className="text-[10px] font-medium uppercase tracking-wider text-ink-500">
+                Speed
+              </label>
+              <span className="text-[11px] font-mono tabular-nums text-ink-300">{speed.toFixed(2)}×</span>
+            </div>
             <input
-              id="tts-volume"
-              name="volume"
+              id="tts-speed"
+              name="speed"
               type="range"
-              min={0}
-              max={1}
-              step={0.01}
-              value={volume}
-              onChange={(e) => onVolume(Number(e.target.value))}
-              className="control-range min-w-0 flex-1"
+              min={0.5}
+              max={1.5}
+              step={0.05}
+              value={speed}
+              onChange={(e) => onSpeed(Number(e.target.value))}
+              className="control-range"
             />
           </div>
         </div>
+      </section>
 
-        <div>
-          <div className="mb-1.5 flex items-center justify-between">
-            <label htmlFor="tts-speed" className="text-xs text-ink-400">
-              Speed
+      {/* Instruments */}
+      <section className="studio-instruments" aria-label="Instruments">
+        <div className="space-y-1">
+          <div className="flex items-center justify-between gap-2">
+            <label htmlFor="tts-voice" className="text-[10px] font-medium uppercase tracking-wider text-ink-500">
+              Voice
             </label>
-            <span className="text-xs font-mono tabular-nums text-ink-300">{speed.toFixed(2)}×</span>
+            {selectedVoiceMeta && (
+              <span className="truncate text-[10px] text-ink-500">
+                {selectedVoiceMeta.language === 'en-us'
+                  ? 'US'
+                  : selectedVoiceMeta.language === 'en-gb'
+                    ? 'UK'
+                    : selectedVoiceMeta.language}
+                {' · '}
+                {selectedVoiceMeta.gender === 'Female' ? 'F' : 'M'}
+                {selectedVoiceMeta.traits ? ` · ${selectedVoiceMeta.traits}` : ''}
+              </span>
+            )}
           </div>
-          <input
-            id="tts-speed"
-            name="speed"
-            type="range"
-            min={0.5}
-            max={1.5}
-            step={0.05}
-            value={speed}
-            onChange={(e) => onSpeed(Number(e.target.value))}
-            className="control-range"
-          />
+          <select
+            id="tts-voice"
+            name="voice"
+            value={voice}
+            onChange={(e) => onVoice(e.target.value)}
+            className="studio-voice-select w-full rounded-lg border border-white/10 bg-ink-950/80 px-2.5 py-2 text-xs text-ink-100 transition-colors focus:outline-none focus:ring-2 focus:ring-amber-300/60"
+          >
+            {voices.length === 0 ? (
+              <option value={voice}>{voiceLabel(voice)}</option>
+            ) : (
+              voices.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                  {v.traits ? ` (${v.traits})` : ''}
+                </option>
+              ))
+            )}
+          </select>
         </div>
-      </div>
 
-      <div className="space-y-2 border-t border-white/[0.06] pt-3">
         <button
           type="button"
           role="switch"
           aria-checked={teleprompterMode}
           onClick={() => onTeleprompterMode(!teleprompterMode)}
-          className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition-colors ${
-            teleprompterMode
-              ? 'border-amber-300/35 bg-amber-300/10'
-              : 'border-white/10 bg-white/[0.03] hover:border-white/18 hover:bg-white/[0.05]'
-          }`}
+          className={`studio-tele-row ${teleprompterMode ? 'is-on' : ''}`}
+          title="Teleprompter (T while playing)"
         >
-          <span
-            className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full border p-0.5 transition-colors ${
-              teleprompterMode
-                ? 'border-amber-300/50 bg-amber-300/30'
-                : 'border-white/15 bg-white/10'
-            }`}
-            aria-hidden
-          >
-            <span
-              className={`h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
-                teleprompterMode ? 'translate-x-3.5' : 'translate-x-0'
-              }`}
-            />
+          <span className={`studio-tele-switch ${teleprompterMode ? 'is-on' : ''}`} aria-hidden>
+            <span className="studio-tele-knob" />
           </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-medium text-ink-100">Teleprompter</span>
-            <span className="mt-0.5 block text-[11px] leading-snug text-ink-500">Press T while playing</span>
+          <span className="min-w-0 flex-1 text-left">
+            <span className="block text-xs font-medium text-ink-100">Teleprompter</span>
+            <span className="block text-[10px] text-ink-500">Press T while playing</span>
           </span>
         </button>
+      </section>
 
-        <label htmlFor="tts-voice" className="block text-xs text-ink-400">
-          Voice
-        </label>
-        <select
-          id="tts-voice"
-          name="voice"
-          value={voice}
-          onChange={(e) => onVoice(e.target.value)}
-          className="w-full rounded-lg border border-white/10 bg-ink-950/80 px-3 py-2.5 text-sm text-ink-100 transition-colors focus:outline-none focus:ring-2 focus:ring-amber-300/60"
-        >
-          {voices.length === 0 ? (
-            <option value={voice}>{voice}</option>
-          ) : (
-            voices.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.name} · {v.language === 'en-us' ? 'US' : v.language === 'en-gb' ? 'UK' : v.language} ·{' '}
-                {v.gender === 'Female' ? 'F' : 'M'}
-                {v.traits ? ` · ${v.traits}` : ''}
-              </option>
-            ))
-          )}
-        </select>
-      </div>
-
-      <div className="border-t border-white/[0.06] pt-2">
-        <button
-          type="button"
-          onClick={() => setShowWaveform((v) => !v)}
-          aria-expanded={showWaveform}
-          className="flex w-full items-center justify-between rounded-lg px-1 py-1.5 text-[11px] text-ink-400 transition-colors hover:text-ink-200"
-        >
-          <span>Waveform</span>
-          <span className="font-mono text-ink-500">{showWaveform ? '−' : '+'}</span>
-        </button>
-        {showWaveform && (
-          <div className="mt-1">
-            <AudioVisualizer analyserRef={analyserRef} playerStatus={status} />
-          </div>
-        )}
-      </div>
-
-      <p className="flex items-center justify-between gap-2 px-1 text-[11px] text-ink-500">
-        <span>
-          Press{' '}
-          <kbd className="rounded bg-white/10 px-1 py-0.5 font-mono text-ink-300">?</kbd> for
-          shortcuts
-        </span>
-        <span className="font-mono text-ink-400">{device ?? '…'}</span>
+      <p className="px-0.5 text-[10px] text-ink-500">
+        Press <kbd className="rounded bg-white/10 px-1 py-0.5 font-mono text-ink-300">?</kbd> for
+        shortcuts
       </p>
 
       {isError && error && (
@@ -343,25 +344,32 @@ export function Controls({
       )}
 
       {status === 'idle' && (
-        <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-[11px] leading-relaxed text-ink-400">
-          First play downloads ~160 MB Kokoro (once). Cached for offline use.
-        </div>
+        <p className="px-0.5 text-[10px] leading-relaxed text-ink-500">
+          First play downloads ~160 MB Kokoro (once). Cached offline.
+        </p>
       )}
     </div>
   )
 }
 
-function PlayIcon() {
+/** Pretty-print a Kokoro voice id before the catalog loads (`af_heart` → `Heart`). */
+function voiceLabel(id: string): string {
+  const leaf = id.includes('_') ? id.slice(id.indexOf('_') + 1) : id
+  if (!leaf) return id
+  return leaf.charAt(0).toUpperCase() + leaf.slice(1)
+}
+
+function PlayIcon({ className = 'h-4 w-4' }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
       <path d="M8 5v14l11-7z" />
     </svg>
   )
 }
 
-function PauseIcon() {
+function PauseIcon({ className = 'h-4 w-4' }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
       <path d="M6 5h4v14H6zM14 5h4v14h-4z" />
     </svg>
   )
@@ -369,7 +377,7 @@ function PauseIcon() {
 
 function StopIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+    <svg viewBox="0 0 24 24" fill="currentColor" className="h-3.5 w-3.5">
       <path d="M6 6h12v12H6z" />
     </svg>
   )
@@ -398,7 +406,7 @@ function SpinnerIcon() {
       fill="none"
       stroke="currentColor"
       strokeWidth="2"
-      className="h-4 w-4 animate-spin"
+      className="h-5 w-5 animate-spin"
     >
       <circle cx="12" cy="12" r="9" opacity="0.25" />
       <path d="M21 12a9 9 0 0 0-9-9" />
@@ -408,7 +416,7 @@ function SpinnerIcon() {
 
 function VolumeIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5">
       <path d="M11 5L6 9H3v6h3l5 4V5z" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M15.54 8.46a5 5 0 0 1 0 7.07" strokeLinecap="round" />
       <path d="M19.07 4.93a9 9 0 0 1 0 12.73" strokeLinecap="round" />
@@ -418,7 +426,7 @@ function VolumeIcon() {
 
 function VolumeMutedIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5">
       <path d="M11 5L6 9H3v6h3l5 4V5z" strokeLinecap="round" strokeLinejoin="round" />
       <path d="m16 9 5 5M21 9l-5 5" strokeLinecap="round" />
     </svg>

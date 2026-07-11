@@ -776,7 +776,7 @@ export function Reader({
       )}
 
       <aside
-        className="min-w-0 w-full space-y-3 lg:shrink-0 lg:w-[var(--controls-width)] lg:min-h-0 lg:overflow-y-auto"
+        className="studio-deck min-w-0 w-full lg:shrink-0 lg:w-[var(--controls-width)] lg:min-h-0 lg:overflow-y-auto"
         style={{ ['--controls-width' as string]: `${controlsWidth}px` }}
       >
         <Controls
@@ -810,8 +810,8 @@ export function Reader({
         />
 
         {!immersive && (
-          <div className="space-y-2">
-            <FileUploader onFile={onFile} compact label="Open Markdown file" />
+          <div className="studio-shelf">
+            <FileUploader onFile={onFile} compact label="Open Markdown" />
             <RecentsList
               documents={documents}
               activeId={activeDocId}

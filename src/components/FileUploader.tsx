@@ -48,8 +48,19 @@ export function FileUploader({
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-medium text-ink-200 transition-colors hover:border-white/20 hover:bg-white/[0.08] hover:text-ink-50"
+          className="studio-shelf-open inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-white/12 bg-transparent px-3 py-2 text-xs font-medium text-ink-300 transition-colors hover:border-amber-300/30 hover:bg-amber-300/[0.06] hover:text-amber-100"
         >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            className="h-3.5 w-3.5"
+            aria-hidden
+          >
+            <path d="M12 16V4m0 0l-4 4m4-4l4 4" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
           {label}
         </button>
         {input}

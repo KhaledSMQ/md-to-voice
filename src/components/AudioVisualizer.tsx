@@ -6,6 +6,8 @@ type Props = {
   analyserRef: RefObject<AnalyserNode | null>
   playerStatus: PlayerStatus
   className?: string
+  /** Taller hero stage for the studio console. */
+  variant?: 'default' | 'stage'
 }
 
 /** Amber / pink / sky palette to match the app shell. */
@@ -86,7 +88,12 @@ function loadingPulse(): number {
   return 0.11 + Math.sin(Date.now() / 420) * 0.055
 }
 
-export function AudioVisualizer({ analyserRef, playerStatus, className = '' }: Props) {
+export function AudioVisualizer({
+  analyserRef,
+  playerStatus,
+  className = '',
+  variant = 'default',
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const waveRef = useRef<SiriWave | null>(null)
   const rafRef = useRef<number | null>(null)
@@ -103,6 +110,7 @@ export function AudioVisualizer({ analyserRef, playerStatus, className = '' }: P
   const isLive = isPlaying || isPaused
   const needsAnim = isPlaying || isPaused || isLoading
   const status = STATUS_META[playerStatus]
+  const isStage = variant === 'stage'
 
   useEffect(() => {
     const mq = window.matchMedia?.('(prefers-reduced-motion: reduce)')
@@ -208,16 +216,28 @@ export function AudioVisualizer({ analyserRef, playerStatus, className = '' }: P
 
   return (
     <div
-      className={`group relative overflow-hidden rounded-xl border border-white/[0.07] bg-gradient-to-b from-ink-950 via-[#0a101c] to-ink-900/60 shadow-inner shadow-ink-950/90 ${className}`}
+      className={
+        `group relative overflow-hidden bg-gradient-to-b from-ink-950 via-[#0a101c] to-ink-900/60 shadow-inner shadow-ink-950/90 ` +
+        (isStage
+          ? `studio-stage rounded-2xl border border-white/[0.08] ${isPlaying ? 'is-live' : ''}`
+          : 'rounded-xl border border-white/[0.07]') +
+        (className ? ` ${className}` : '')
+      }
     >
       {reducedMotion ? (
-        <div className="flex h-20 sm:h-24 w-full items-center justify-center" aria-hidden>
+        <div
+          className={`flex w-full items-center justify-center ${isStage ? 'h-28' : 'h-20 sm:h-24'}`}
+          aria-hidden
+        >
           <div className="h-px w-3/4 bg-gradient-to-r from-transparent via-white/25 to-transparent" />
         </div>
       ) : (
         <div
           ref={containerRef}
-          className={`h-20 sm:h-32 w-full transition-opacity duration-500 ${isLive ? 'opacity-100' : 'opacity-70'}`}
+          className={
+            `w-full transition-opacity duration-500 ${isLive ? 'opacity-100' : 'opacity-70'} ` +
+            (isStage ? 'h-28' : 'h-20 sm:h-32')
+          }
           aria-hidden
         />
       )}
