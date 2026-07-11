@@ -5,6 +5,7 @@ const EMPTY: ParsedDocument = {
   reactNode: null,
   words: [],
   chunks: [],
+  outline: [],
 }
 
 /**

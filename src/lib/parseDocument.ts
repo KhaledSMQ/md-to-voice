@@ -9,11 +9,13 @@ import type { Root as MdastRoot } from 'mdast'
 import type { Root as HastRoot } from 'hast'
 import { extractWords, splitWordsPlugin, wordifyHandlers, type WordToken } from './tokenize'
 import { chunkWords, type Chunk } from './chunker'
+import { stampDocumentOutline, type OutlineItem } from './documentOutline'
 
 export type ParsedDocument = {
   reactNode: ReactNode
   words: WordToken[]
   chunks: Chunk[]
+  outline: OutlineItem[]
 }
 
 const processor = unified()
@@ -27,6 +29,8 @@ const processor = unified()
 
 export function parseDocument(markdown: string): ParsedDocument {
   const mdast = processor.parse(markdown) as MdastRoot
+  // Stamp ids before runSync so remark-rehype copies them onto <h*> elements.
+  const outline = stampDocumentOutline(mdast)
   const transformed = processor.runSync(mdast) as HastRoot
   const words = collectWordsFromMdast(mdast)
   const chunks = chunkWords(words)
@@ -38,7 +42,7 @@ export function parseDocument(markdown: string): ParsedDocument {
     passKeys: true,
   }) as ReactNode
 
-  return { reactNode, words, chunks }
+  return { reactNode, words, chunks, outline }
 }
 
 function collectWordsFromMdast(tree: MdastRoot): WordToken[] {

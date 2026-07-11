@@ -9,6 +9,13 @@ type Props = {
   onFontSizeChange: (size: number) => void
   onPaste: () => void
   onToggleInlineEdit: () => void
+  /** Open find-in-preview (hidden while editing). */
+  onOpenSearch?: () => void
+  searchOpen?: boolean
+  /** Toggle document sections rail (hidden while editing / no headings). */
+  onToggleOutline?: () => void
+  outlineOpen?: boolean
+  outlineAvailable?: boolean
 }
 
 export function ReaderChrome({
@@ -19,6 +26,11 @@ export function ReaderChrome({
   onFontSizeChange,
   onPaste,
   onToggleInlineEdit,
+  onOpenSearch,
+  searchOpen = false,
+  onToggleOutline,
+  outlineOpen = false,
+  outlineAvailable = false,
 }: Props) {
   const titleInputRef = useRef<HTMLInputElement>(null)
   const [headerRenaming, setHeaderRenaming] = useState(false)
@@ -86,6 +98,40 @@ export function ReaderChrome({
         </div>
       )}
       <FontSizeControl fontSize={fontSize} onChange={onFontSizeChange} />
+      {!inlineEdit && outlineAvailable && onToggleOutline && (
+        <button
+          type="button"
+          onClick={onToggleOutline}
+          aria-pressed={outlineOpen}
+          title="Document sections"
+          className={
+            'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-ink-300 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50 ' +
+            (outlineOpen
+              ? 'border-amber-300/45 bg-amber-300/12 text-amber-100'
+              : 'border-white/10 bg-white/[0.04] hover:border-white/20 hover:bg-white/[0.08]')
+          }
+        >
+          <span className="sr-only">Document sections</span>
+          <OutlineIcon />
+        </button>
+      )}
+      {!inlineEdit && onOpenSearch && (
+        <button
+          type="button"
+          onClick={onOpenSearch}
+          aria-pressed={searchOpen}
+          title="Find in preview (⌘F)"
+          className={
+            'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-ink-300 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50 ' +
+            (searchOpen
+              ? 'border-sky-300/45 bg-sky-300/12 text-sky-100'
+              : 'border-white/10 bg-white/[0.04] hover:border-white/20 hover:bg-white/[0.08]')
+          }
+        >
+          <span className="sr-only">Find in preview</span>
+          <SearchIcon />
+        </button>
+      )}
       <button
         type="button"
         onClick={onPaste}
@@ -111,6 +157,24 @@ export function ReaderChrome({
         <PenIcon />
       </button>
     </div>
+  )
+}
+
+function SearchIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.5-3.5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function OutlineIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M8 6h13M8 12h13M8 18h13" strokeLinecap="round" />
+      <path d="M3.5 6h.01M3.5 12h.01M3.5 18h.01" strokeLinecap="round" />
+    </svg>
   )
 }
 

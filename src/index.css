@@ -474,6 +474,17 @@ body {
     color: inherit;
   }
 
+  /* Find-in-preview — soft sky tint so it never competes with the amber playhead. */
+  ::highlight(preview-search) {
+    background-color: rgba(56, 189, 248, 0.28);
+    color: inherit;
+  }
+
+  ::highlight(preview-search-current) {
+    background-color: rgba(56, 189, 248, 0.48);
+    color: inherit;
+  }
+
   .markdown-body {
     font-size: var(--reader-font-size, 1rem);
   }
@@ -487,6 +498,7 @@ body {
     margin-top: 1.5em;
     margin-bottom: 0.6em;
     line-height: 1.25;
+    scroll-margin-top: 0.75rem;
   }
 
   .markdown-body h1 {
@@ -502,6 +514,18 @@ body {
   }
   .markdown-body h4 {
     font-size: 1.1em;
+  }
+
+  .preview-outline-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
+  }
+  .preview-outline-scroll::-webkit-scrollbar {
+    width: 4px;
+  }
+  .preview-outline-scroll::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.28);
+    border-radius: 999px;
   }
 
   .markdown-body p {

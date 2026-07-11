@@ -8,6 +8,13 @@ export type MarkdownReaderHandle = {
   /** Recompute whether the active word is inside the visible scrollport. */
   recheckActiveInView: () => void
   reset: () => void
+  /** Scroll container (the preview viewport) for find-in-preview, etc. */
+  getContainer: () => HTMLDivElement | null
+  /**
+   * When locked, karaoke auto-scroll stays off so the user can browse
+   * search hits (or anything else) without being yanked back to the playhead.
+   */
+  setAutoScrollLocked: (locked: boolean) => void
 }
 
 export type PlayheadVisibility = {
@@ -123,6 +130,7 @@ export const MarkdownReader = forwardRef<MarkdownReaderHandle, Props>(function M
   const userPauseUntilRef = useRef<number>(0)
   const reducedMotionRef = useRef<boolean>(false)
   const programmaticScrollRef = useRef<boolean>(false)
+  const autoScrollLockedRef = useRef<boolean>(false)
   const lastVisNotified = useRef<string>('')
   const onWordClickRef = useRef(onWordClick)
   const onVisRef = useRef(onActiveVisibilityChange)
@@ -257,6 +265,7 @@ export const MarkdownReader = forwardRef<MarkdownReaderHandle, Props>(function M
     if (!container) return
     const idx = activeRef.current
     if (idx < 0) return
+    if (autoScrollLockedRef.current) return
     if (performance.now() < userPauseUntilRef.current) return
     const el = wordEls.current.get(idx)
     if (!el) return
@@ -336,6 +345,7 @@ export const MarkdownReader = forwardRef<MarkdownReaderHandle, Props>(function M
       },
       scrollToActive() {
         if (activeRef.current < 0) return
+        if (autoScrollLockedRef.current) return
         if (scrollRafRef.current != null) return
         scrollRafRef.current = requestAnimationFrame(animateScroll)
       },
@@ -354,6 +364,14 @@ export const MarkdownReader = forwardRef<MarkdownReaderHandle, Props>(function M
         scrollRafRef.current = null
         lastVisNotified.current = ''
         scheduleNotifyActiveInView()
+      },
+      getContainer: () => containerRef.current,
+      setAutoScrollLocked(locked: boolean) {
+        autoScrollLockedRef.current = locked
+        if (locked && scrollRafRef.current != null) {
+          cancelAnimationFrame(scrollRafRef.current)
+          scrollRafRef.current = null
+        }
       },
     }),
     [animateScroll, scheduleNotifyActiveInView, scrollToActiveNow],

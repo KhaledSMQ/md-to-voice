@@ -5,6 +5,8 @@ import { ColumnResizeHandle } from './ColumnResizeHandle'
 import { ResumeBanner } from './ResumeBanner'
 import { ReaderChrome } from './ReaderChrome'
 import { ReaderEmptyState } from './ReaderEmptyState'
+import { PreviewSearchBar } from './PreviewSearchBar'
+import { PreviewOutline } from './PreviewOutline'
 import { TeleprompterOverlay } from './TeleprompterOverlay'
 import { usePlayer } from '../lib/usePlayer'
 import {
@@ -15,6 +17,15 @@ import {
   DEFAULT_APP_SETTINGS,
 } from '../lib/appSettings'
 import type { ParsedDocument } from '../lib/parseDocument'
+import { scrollHeadingIntoContainer } from '../lib/documentOutline'
+import {
+  applyPreviewSearchHighlights,
+  clearPreviewSearchHighlights,
+  cssHighlightSupported,
+  findTextRanges,
+  rangeOverlayBoxes,
+  scrollRangeIntoContainer,
+} from '../lib/previewSearch'
 
 type Props = {
   activeDocId: string
@@ -65,8 +76,23 @@ export function Reader({
   onControlsWidthChange,
 }: Props) {
   const readerRef = useRef<MarkdownReaderHandle>(null)
+  const previewFrameRef = useRef<HTMLDivElement>(null)
   const inlineEditorRef = useRef<HTMLTextAreaElement>(null)
   const [inlineEdit, setInlineEdit] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchMatches, setSearchMatches] = useState<Range[]>([])
+  const [searchIndex, setSearchIndex] = useState(0)
+  const [searchFocusNonce, setSearchFocusNonce] = useState(0)
+  const [overlayBoxes, setOverlayBoxes] = useState<
+    Array<{ top: number; left: number; width: number; height: number }>
+  >([])
+  const [outlineOpen, setOutlineOpen] = useState(false)
+  const [activeOutlineId, setActiveOutlineId] = useState<string | null>(null)
+  const searchMatchesRef = useRef<Range[]>([])
+  const searchIndexRef = useRef(0)
+  const outlineUnlockTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const useCssHighlight = cssHighlightSupported()
 
   const noPlayableText = !markdown.trim() || parsed.words.length === 0
 
@@ -227,7 +253,8 @@ export function Reader({
 
   useEffect(() => {
     if (player.status === 'ready' || player.status === 'idle' || player.status === 'finished') {
-      setTeleprompterDismissed(false)
+      // Defer so we don't cascade a render from the status sync effect.
+      queueMicrotask(() => setTeleprompterDismissed(false))
     }
   }, [player.status])
 
@@ -343,16 +370,256 @@ export function Reader({
     return () => cancelAnimationFrame(t)
   }, [inlineEdit])
 
+  const parseKey = `${activeDocId}:${parsed.words.length}:${parsed.chunks.length}:${markdown.length}`
+  const outline = parsed.outline
+  const outlineAvailable = outline.length > 0 && !inlineEdit && !noPlayableText
+
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false)
+    setSearchQuery('')
+    setSearchMatches([])
+    setSearchIndex(0)
+    searchMatchesRef.current = []
+    searchIndexRef.current = 0
+    setOverlayBoxes([])
+    clearPreviewSearchHighlights()
+    readerRef.current?.setAutoScrollLocked(false)
+  }, [])
+
+  const openSearch = useCallback(() => {
+    if (inlineEdit || noPlayableText || showTeleprompter) return
+    setSearchOpen(true)
+    setSearchFocusNonce((n) => n + 1)
+    readerRef.current?.setAutoScrollLocked(true)
+  }, [inlineEdit, noPlayableText, showTeleprompter])
+
+  const paintSearchHit = useCallback(
+    (ranges: Range[], index: number) => {
+      const container = readerRef.current?.getContainer()
+      if (!container) {
+        setOverlayBoxes([])
+        return
+      }
+      if (ranges.length === 0 || index < 0 || index >= ranges.length) {
+        clearPreviewSearchHighlights()
+        setOverlayBoxes([])
+        return
+      }
+      const range = ranges[index]!
+      scrollRangeIntoContainer(container, range)
+      if (useCssHighlight) {
+        applyPreviewSearchHighlights(ranges, index)
+        setOverlayBoxes([])
+      } else {
+        clearPreviewSearchHighlights()
+        const frame = previewFrameRef.current
+        setOverlayBoxes(frame ? rangeOverlayBoxes(range, frame) : [])
+      }
+    },
+    [useCssHighlight],
+  )
+
+  const goToSearchMatch = useCallback(
+    (nextIndex: number) => {
+      const ranges = searchMatchesRef.current
+      if (ranges.length === 0) return
+      const idx = ((nextIndex % ranges.length) + ranges.length) % ranges.length
+      searchIndexRef.current = idx
+      setSearchIndex(idx)
+      paintSearchHit(ranges, idx)
+    },
+    [paintSearchHit],
+  )
+
+  const goNextSearch = useCallback(() => {
+    goToSearchMatch(searchIndexRef.current + 1)
+  }, [goToSearchMatch])
+
+  const goPrevSearch = useCallback(() => {
+    goToSearchMatch(searchIndexRef.current - 1)
+  }, [goToSearchMatch])
+
+  const searchActive = searchOpen && !inlineEdit && !noPlayableText && !showTeleprompter
+
+  // Close the sections rail when editing or entering teleprompter.
+  useEffect(() => {
+    if (inlineEdit || showTeleprompter) setOutlineOpen(false)
+  }, [inlineEdit, showTeleprompter])
+
+  const jumpToOutlineSection = useCallback(
+    (id: string) => {
+      const reader = readerRef.current
+      const container = reader?.getContainer()
+      if (!reader || !container) return
+      const heading = container.querySelector<HTMLElement>(`#${CSS.escape(id)}`)
+      if (!heading) return
+
+      setActiveOutlineId(id)
+      // Pause karaoke follow so jumping sections isn't yanked back.
+      reader.setAutoScrollLocked(true)
+      if (outlineUnlockTimer.current) clearTimeout(outlineUnlockTimer.current)
+      const reduced =
+        typeof window !== 'undefined' &&
+        window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+      scrollHeadingIntoContainer(container, heading, {
+        behavior: reduced ? 'auto' : 'smooth',
+      })
+      outlineUnlockTimer.current = setTimeout(() => {
+        outlineUnlockTimer.current = null
+        // Keep locked if find-in-preview took over meanwhile.
+        if (!searchOpen) readerRef.current?.setAutoScrollLocked(false)
+      }, 2800)
+    },
+    [searchOpen],
+  )
+
+  // Track which section is in view inside the preview scrollport.
+  useEffect(() => {
+    if (!outlineAvailable || outline.length === 0) {
+      setActiveOutlineId(null)
+      return
+    }
+    const container = readerRef.current?.getContainer()
+    if (!container) return
+
+    const headings = outline
+      .map((item) => container.querySelector<HTMLElement>(`#${CSS.escape(item.id)}`))
+      .filter((el): el is HTMLElement => Boolean(el))
+    if (headings.length === 0) {
+      setActiveOutlineId(null)
+      return
+    }
+
+    const visible = new Map<string, number>()
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const id = (entry.target as HTMLElement).id
+          if (!id) continue
+          if (entry.isIntersecting) visible.set(id, entry.intersectionRatio)
+          else visible.delete(id)
+        }
+        // Prefer the topmost intersecting heading in document order.
+        let next: string | null = null
+        for (const item of outline) {
+          if (visible.has(item.id)) {
+            next = item.id
+            break
+          }
+        }
+        if (next == null && headings[0]) {
+          // Above all headings → first; below all → last.
+          const first = headings[0].getBoundingClientRect()
+          const c = container.getBoundingClientRect()
+          next = first.top >= c.bottom ? outline[0]!.id : outline[outline.length - 1]!.id
+        }
+        setActiveOutlineId((prev) => (prev === next ? prev : next))
+      },
+      {
+        root: container,
+        // Bias toward the upper band of the viewport (reading eye-line).
+        rootMargin: '-8% 0px -72% 0px',
+        threshold: [0, 0.25, 0.5, 1],
+      },
+    )
+    headings.forEach((el) => observer.observe(el))
+    return () => observer.disconnect()
+  }, [outlineAvailable, outline, parseKey])
+
+  useEffect(() => {
+    return () => {
+      if (outlineUnlockTimer.current) clearTimeout(outlineUnlockTimer.current)
+    }
+  }, [])
+
+  // Recompute matches when the query or document changes.
+  useEffect(() => {
+    if (!searchActive) {
+      searchMatchesRef.current = []
+      clearPreviewSearchHighlights()
+      return
+    }
+    const container = readerRef.current?.getContainer()
+    if (!container) {
+      searchMatchesRef.current = []
+      clearPreviewSearchHighlights()
+      setSearchMatches([])
+      setSearchIndex(0)
+      setOverlayBoxes([])
+      return
+    }
+    const ranges = findTextRanges(container, searchQuery)
+    searchMatchesRef.current = ranges
+    setSearchMatches(ranges)
+    searchIndexRef.current = 0
+    setSearchIndex(0)
+    paintSearchHit(ranges, 0)
+  }, [searchActive, searchQuery, parseKey, paintSearchHit])
+
+  // Lock karaoke auto-scroll while find is active so hits stay navigable.
+  useEffect(() => {
+    const reader = readerRef.current
+    if (!searchActive) {
+      reader?.setAutoScrollLocked(false)
+      clearPreviewSearchHighlights()
+      return
+    }
+    reader?.setAutoScrollLocked(true)
+    return () => {
+      reader?.setAutoScrollLocked(false)
+      clearPreviewSearchHighlights()
+    }
+  }, [searchActive])
+
+  // Keep overlay boxes aligned if the user scrolls (Highlight API fallback only).
+  useEffect(() => {
+    if (!searchActive || useCssHighlight) return
+    const container = readerRef.current?.getContainer()
+    const frame = previewFrameRef.current
+    if (!container || !frame) return
+    const sync = () => {
+      const ranges = searchMatchesRef.current
+      const idx = searchIndexRef.current
+      if (ranges.length === 0 || idx < 0 || idx >= ranges.length) {
+        setOverlayBoxes([])
+        return
+      }
+      setOverlayBoxes(rangeOverlayBoxes(ranges[idx]!, frame))
+    }
+    container.addEventListener('scroll', sync, { passive: true })
+    window.addEventListener('resize', sync)
+    return () => {
+      container.removeEventListener('scroll', sync)
+      window.removeEventListener('resize', sync)
+    }
+  }, [searchActive, useCssHighlight, searchMatches, searchIndex])
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLElement) {
-        const tag = e.target.tagName
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
-        if (e.target.isContentEditable) return
+      const isMod = e.metaKey || e.ctrlKey
+      const inField =
+        e.target instanceof HTMLElement &&
+        (e.target.tagName === 'INPUT' ||
+          e.target.tagName === 'TEXTAREA' ||
+          e.target.tagName === 'SELECT' ||
+          e.target.isContentEditable)
+
+      if (isMod && (e.key === 'f' || e.key === 'F')) {
+        if (inlineEdit || noPlayableText || showTeleprompter) return
+        e.preventDefault()
+        openSearch()
+        return
       }
-      if ((e.metaKey || e.ctrlKey) && (e.key === 'v' || e.key === 'V')) {
-        // Global paste into the active document (preview / empty state).
-        // Leave native paste alone inside editors (handled above).
+      if (isMod && (e.key === 'g' || e.key === 'G')) {
+        if (!searchActive || searchMatchesRef.current.length === 0) return
+        e.preventDefault()
+        if (e.shiftKey) goPrevSearch()
+        else goNextSearch()
+        return
+      }
+      if (inField) return
+
+      if (isMod && (e.key === 'v' || e.key === 'V')) {
         if (inlineEdit || showTeleprompter) return
         e.preventDefault()
         void handlePasteClick()
@@ -362,6 +629,11 @@ export function Reader({
         e.preventDefault()
         playerRef.current.toggle()
       } else if (e.code === 'Escape') {
+        if (searchActive) {
+          e.preventDefault()
+          closeSearch()
+          return
+        }
         if (showTeleprompter) {
           e.preventDefault()
           setTeleprompterDismissed(true)
@@ -377,6 +649,7 @@ export function Reader({
           setTeleprompterDismissed(true)
           return
         }
+        closeSearch()
         setTeleprompterMode(true)
         setTeleprompterDismissed(false)
       } else if (e.key === '[' || e.code === 'ArrowLeft') {
@@ -389,9 +662,18 @@ export function Reader({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [handleStop, showTeleprompter, inlineEdit, noPlayableText, handlePasteClick])
-
-  const parseKey = `${activeDocId}:${parsed.words.length}:${parsed.chunks.length}:${markdown.length}`
+  }, [
+    handleStop,
+    showTeleprompter,
+    inlineEdit,
+    noPlayableText,
+    handlePasteClick,
+    searchActive,
+    openSearch,
+    closeSearch,
+    goNextSearch,
+    goPrevSearch,
+  ])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row lg:gap-0">
@@ -418,8 +700,31 @@ export function Reader({
           fontSize={fontSize}
           onFontSizeChange={onFontSizeChange}
           onPaste={() => void handlePasteClick()}
-          onToggleInlineEdit={() => setInlineEdit((v) => !v)}
+          onToggleInlineEdit={() => {
+            setInlineEdit((v) => {
+              if (!v) closeSearch()
+              return !v
+            })
+          }}
+          onOpenSearch={openSearch}
+          searchOpen={searchActive}
+          onToggleOutline={() => setOutlineOpen((v) => !v)}
+          outlineOpen={outlineOpen}
+          outlineAvailable={outlineAvailable}
         />
+
+        {searchActive && (
+          <PreviewSearchBar
+            query={searchQuery}
+            onQueryChange={setSearchQuery}
+            matchCount={searchMatches.length}
+            currentIndex={searchMatches.length === 0 ? -1 : searchIndex}
+            onNext={goNextSearch}
+            onPrev={goPrevSearch}
+            onClose={closeSearch}
+            focusNonce={searchFocusNonce}
+          />
+        )}
 
         {inlineEdit ? (
           <textarea
@@ -458,7 +763,8 @@ export function Reader({
         ) : (
           <div
             className={
-              'relative min-h-0 min-w-0 flex-1' + (showResumeNudge && resumeNudge ? ' pt-[4.5rem]' : '')
+              'relative flex min-h-0 min-w-0 flex-1 overflow-hidden' +
+              (showResumeNudge && resumeNudge ? ' pt-[4.5rem]' : '')
             }
           >
             {showResumeNudge && resumeNudge && (
@@ -473,34 +779,66 @@ export function Reader({
                 onDismiss={() => setResumeBannerDismissedKey(resumeBannerKey)}
               />
             )}
-            <MarkdownReader
-              reactNode={parsed.reactNode}
-              parseKey={parseKey}
-              onWordClick={onWordClick}
-              onActiveVisibilityChange={onActiveVisibilityChange}
-              ref={readerRef}
-              className="markdown-body min-h-0 min-w-0 h-full max-h-full flex-1 overflow-y-auto px-5 py-4"
-              style={{ ['--reader-font-size' as string]: `${fontSize}px`, fontSize: `${fontSize}px` }}
-            />
-            {!playhead.inView &&
-              (player.status === 'playing' || player.status === 'paused') &&
-              playhead.out && (
-                <div className="pointer-events-none absolute bottom-3 left-0 right-0 z-10 flex justify-center">
-                  <button
-                    type="button"
-                    onClick={() => readerRef.current?.scrollToActiveNow()}
-                    title={
-                      playhead.out === 'above'
-                        ? 'Current word is above — scroll up'
-                        : 'Current word is below — scroll down'
-                    }
-                    className="pointer-events-auto flex items-center gap-2 rounded-full border border-amber-300/40 bg-ink-900/90 px-4 py-1.5 text-sm font-medium text-amber-100 shadow-lg shadow-ink-950/40 backdrop-blur transition-colors hover:border-amber-200/60 hover:bg-ink-800/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50"
-                  >
-                    <PlayArrows direction={playhead.out} />
-                    <span>Now playing</span>
-                  </button>
-                </div>
-              )}
+            {outlineAvailable && (
+              <div
+                className={
+                  'flex min-h-0 self-stretch ' + (readingFocus ? 'reading-focus-dim' : '')
+                }
+              >
+                <PreviewOutline
+                  items={outline}
+                  open={outlineOpen}
+                  onOpenChange={setOutlineOpen}
+                  activeId={activeOutlineId}
+                  onSelect={jumpToOutlineSection}
+                />
+              </div>
+            )}
+            <div ref={previewFrameRef} className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+              <MarkdownReader
+                reactNode={parsed.reactNode}
+                parseKey={parseKey}
+                onWordClick={onWordClick}
+                onActiveVisibilityChange={onActiveVisibilityChange}
+                ref={readerRef}
+                className="markdown-body min-h-0 min-w-0 h-full max-h-full flex-1 overflow-y-auto px-5 py-4"
+                style={{ ['--reader-font-size' as string]: `${fontSize}px`, fontSize: `${fontSize}px` }}
+              />
+              {!useCssHighlight &&
+                overlayBoxes.map((box, i) => (
+                  <div
+                    key={i}
+                    className="pointer-events-none absolute z-[5] rounded-sm bg-sky-300/35 ring-1 ring-sky-200/50"
+                    style={{
+                      top: box.top,
+                      left: box.left,
+                      width: box.width,
+                      height: box.height,
+                    }}
+                    aria-hidden
+                  />
+                ))}
+              {!playhead.inView &&
+                !searchActive &&
+                (player.status === 'playing' || player.status === 'paused') &&
+                playhead.out && (
+                  <div className="pointer-events-none absolute bottom-3 left-0 right-0 z-10 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => readerRef.current?.scrollToActiveNow()}
+                      title={
+                        playhead.out === 'above'
+                          ? 'Current word is above — scroll up'
+                          : 'Current word is below — scroll down'
+                      }
+                      className="pointer-events-auto flex items-center gap-2 rounded-full border border-amber-300/40 bg-ink-900/90 px-4 py-1.5 text-sm font-medium text-amber-100 shadow-lg shadow-ink-950/40 backdrop-blur transition-colors hover:border-amber-200/60 hover:bg-ink-800/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50"
+                    >
+                      <PlayArrows direction={playhead.out} />
+                      <span>Now playing</span>
+                    </button>
+                  </div>
+                )}
+            </div>
           </div>
         )}
       </div>
@@ -546,6 +884,7 @@ export function Reader({
           onNextChunk={() => void player.skipChunk(1)}
           teleprompterMode={teleprompterMode}
           onTeleprompterMode={(enabled) => {
+            if (enabled) closeSearch()
             setTeleprompterMode(enabled)
             if (enabled) setTeleprompterDismissed(false)
           }}
@@ -571,6 +910,7 @@ export function Reader({
         <div className="panel-card p-3 text-[11px] text-ink-400 leading-relaxed">
           <kbd className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-ink-200">Space</kbd>{' '}
           play / pause ·{' '}
+          <kbd className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-ink-200">⌘F</kbd> find ·{' '}
           <kbd className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-ink-200">⌘V</kbd>{' '}
           paste ·{' '}
           <kbd className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-ink-200">T</kbd>{' '}
