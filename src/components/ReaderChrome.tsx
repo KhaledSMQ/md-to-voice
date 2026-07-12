@@ -1,8 +1,11 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { BrightnessControl } from './BrightnessControl'
 import { FontSizeControl } from './FontSizeControl'
 import { MeasureWidthControl } from './MeasureWidthControl'
 import { ReadingPresetControl } from './ReadingPresetControl'
+import { TypographyControl } from './TypographyControl'
 import type { ReadingPresetId } from '../lib/readingPresets'
+import type { ReadingTypographyId } from '../lib/readingTypography'
 
 type Props = {
   inlineEdit: boolean
@@ -12,6 +15,10 @@ type Props = {
   onFontSizeChange: (size: number) => void
   readingPreset: ReadingPresetId
   onReadingPresetChange: (preset: ReadingPresetId) => void
+  readingTypography: ReadingTypographyId
+  onReadingTypographyChange: (id: ReadingTypographyId) => void
+  readingBrightness: number
+  onReadingBrightnessChange: (brightness: number) => void
   measureWidth: number
   onMeasureWidthChange: (ch: number) => void
   onPaste: () => void
@@ -37,6 +44,10 @@ export function ReaderChrome({
   onFontSizeChange,
   readingPreset,
   onReadingPresetChange,
+  readingTypography,
+  onReadingTypographyChange,
+  readingBrightness,
+  onReadingBrightnessChange,
   measureWidth,
   onMeasureWidthChange,
   onPaste,
@@ -175,7 +186,7 @@ export function ReaderChrome({
               ref={menuRef}
               id={menuId}
               role="menu"
-              className="absolute right-0 top-[calc(100%+0.35rem)] z-50 w-60 rounded-xl border border-white/10 bg-ink-950/95 p-1.5 shadow-xl shadow-ink-950/50 backdrop-blur"
+              className="absolute right-0 top-[calc(100%+0.35rem)] z-50 w-64 max-h-[min(70vh,36rem)] overflow-y-auto rounded-xl border border-white/10 bg-ink-950/95 p-1.5 shadow-xl shadow-ink-950/50 backdrop-blur"
             >
               <div className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5">
                 <span className="text-[11px] text-ink-400">Text size</span>
@@ -183,6 +194,12 @@ export function ReaderChrome({
               </div>
               <MeasureWidthControl value={measureWidth} onChange={onMeasureWidthChange} />
               <ReadingPresetControl value={readingPreset} onChange={onReadingPresetChange} />
+              <BrightnessControl
+                value={readingBrightness}
+                onChange={onReadingBrightnessChange}
+                readingPreset={readingPreset}
+              />
+              <TypographyControl value={readingTypography} onChange={onReadingTypographyChange} />
               <div className="my-1 border-t border-white/5" />
               <MenuItem
                 onClick={() => {
@@ -208,6 +225,7 @@ export function ReaderChrome({
                     setMenuOpen(false)
                   }}
                   label={outlineOpen ? 'Hide sections' : 'Sections'}
+                  hint="O"
                   icon={<OutlineIcon />}
                   active={outlineOpen}
                 />
@@ -240,7 +258,7 @@ export function ReaderChrome({
             type="button"
             onClick={onToggleInlineEdit}
             aria-pressed={inlineEdit}
-            title={inlineEdit ? 'Back to preview' : 'Edit markdown in place'}
+            title={inlineEdit ? 'Back to preview (Esc)' : 'Edit markdown in place (/)'}
             tabIndex={showTools ? undefined : -1}
             className={
               'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-ink-300 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50 ' +

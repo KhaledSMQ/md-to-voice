@@ -1,11 +1,21 @@
 import type { RecentsSort } from './documentStore'
 import {
+  BRIGHTNESS_DEFAULT,
+  clampBrightness,
+  isBrightnessValue,
+} from './readingBrightness'
+import {
   DEFAULT_READING_PRESET,
   MEASURE_WIDTH_DEFAULT,
   clampMeasureWidth,
   isReadingPresetId,
   type ReadingPresetId,
 } from './readingPresets'
+import {
+  DEFAULT_READING_TYPOGRAPHY,
+  isReadingTypographyId,
+  type ReadingTypographyId,
+} from './readingTypography'
 
 const KEY = 'md-to-voice:v1:appSettings'
 
@@ -19,8 +29,12 @@ export const DEFAULT_APP_SETTINGS = {
   controlsWidth: 280,
   /** Apple Lyrics–style centered teleprompter while speaking. Opt-in. */
   teleprompterMode: false,
-  /** Preview panel reading theme (typography + contrast). */
+  /** Preview panel reading theme (contrast / hue). */
   readingPreset: DEFAULT_READING_PRESET as ReadingPresetId,
+  /** Curated reading face. */
+  readingTypography: DEFAULT_READING_TYPOGRAPHY as ReadingTypographyId,
+  /** Page light 0–100 (50 = authored preset balance). */
+  readingBrightness: BRIGHTNESS_DEFAULT,
   /** Reading column width in `ch` (100 = fill panel). */
   measureWidth: MEASURE_WIDTH_DEFAULT,
 } as const
@@ -30,10 +44,22 @@ export const VOLUME_MAX = 1
 
 export const FONT_SIZE_MIN = 14
 export const FONT_SIZE_MAX = 32
+export const SPEED_MIN = 0.5
+export const SPEED_MAX = 1.5
+export const SPEED_STEP = 0.1
 export const SIDEBAR_WIDTH_MIN = 260
 export const SIDEBAR_WIDTH_MAX = 720
 export const CONTROLS_WIDTH_MIN = 220
 export const CONTROLS_WIDTH_MAX = 480
+
+export function clampFontSize(n: number): number {
+  return Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, Math.round(n)))
+}
+
+export function clampSpeed(n: number): number {
+  const stepped = Math.round(n * 100) / 100
+  return Math.min(SPEED_MAX, Math.max(SPEED_MIN, stepped))
+}
 
 export type AppSettings = {
   voice: string
@@ -45,15 +71,13 @@ export type AppSettings = {
   controlsWidth: number
   teleprompterMode: boolean
   readingPreset: ReadingPresetId
+  readingTypography: ReadingTypographyId
+  readingBrightness: number
   measureWidth: number
 }
 
 function clampVolume(n: number): number {
   return Math.min(VOLUME_MAX, Math.max(VOLUME_MIN, n))
-}
-
-function clampFontSize(n: number): number {
-  return Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, Math.round(n)))
 }
 
 function clampSidebarWidth(n: number): number {
@@ -100,13 +124,19 @@ export function loadAppSettings(): AppSettings {
     const readingPreset = isReadingPresetId(p.readingPreset)
       ? p.readingPreset
       : DEFAULT_APP_SETTINGS.readingPreset
+    const readingTypography = isReadingTypographyId(p.readingTypography)
+      ? p.readingTypography
+      : DEFAULT_APP_SETTINGS.readingTypography
+    const readingBrightness = isBrightnessValue(p.readingBrightness)
+      ? clampBrightness(p.readingBrightness)
+      : DEFAULT_APP_SETTINGS.readingBrightness
     const measureWidth =
       typeof p.measureWidth === 'number'
         ? clampMeasureWidth(p.measureWidth)
         : DEFAULT_APP_SETTINGS.measureWidth
     return {
       voice: typeof p.voice === 'string' && p.voice.length > 0 ? p.voice : DEFAULT_APP_SETTINGS.voice,
-      speed: Math.min(1.5, Math.max(0.5, sp)),
+      speed: clampSpeed(sp),
       volume: clampVolume(vol),
       recentsSort,
       fontSize,
@@ -114,6 +144,8 @@ export function loadAppSettings(): AppSettings {
       controlsWidth,
       teleprompterMode,
       readingPreset,
+      readingTypography,
+      readingBrightness,
       measureWidth,
     }
   } catch {
@@ -143,11 +175,16 @@ export function saveAppSettings(patch: Partial<AppSettings>): void {
       teleprompterMode:
         typeof patch.teleprompterMode === 'boolean' ? patch.teleprompterMode : prev.teleprompterMode,
       readingPreset: isReadingPresetId(patch.readingPreset) ? patch.readingPreset : prev.readingPreset,
+      readingTypography: isReadingTypographyId(patch.readingTypography)
+        ? patch.readingTypography
+        : prev.readingTypography,
+      readingBrightness: isBrightnessValue(patch.readingBrightness)
+        ? clampBrightness(patch.readingBrightness)
+        : prev.readingBrightness,
       measureWidth:
         typeof patch.measureWidth === 'number' ? clampMeasureWidth(patch.measureWidth) : prev.measureWidth,
     }
-    if (next.speed < 0.5) next.speed = 0.5
-    if (next.speed > 1.5) next.speed = 1.5
+    next.speed = clampSpeed(next.speed)
     localStorage.setItem(KEY, JSON.stringify(next))
   } catch {
     // ignore

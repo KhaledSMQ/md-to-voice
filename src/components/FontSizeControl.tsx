@@ -21,7 +21,7 @@ export function FontSizeControl({ fontSize, onChange, compact = false }: Props) 
         type="button"
         onClick={() => bump(-1)}
         disabled={fontSize <= FONT_SIZE_MIN}
-        title="Decrease font size"
+        title="Decrease font size (⌘−)"
         aria-label="Decrease font size"
         className={
           compact
@@ -45,7 +45,7 @@ export function FontSizeControl({ fontSize, onChange, compact = false }: Props) 
         type="button"
         onClick={() => bump(1)}
         disabled={fontSize >= FONT_SIZE_MAX}
-        title="Increase font size"
+        title="Increase font size (⌘+)"
         aria-label="Increase font size"
         className={
           compact

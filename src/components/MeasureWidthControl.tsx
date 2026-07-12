@@ -2,6 +2,7 @@ import {
   MEASURE_WIDTH_MAX,
   MEASURE_WIDTH_MIN,
   MEASURE_WIDTH_PRESETS,
+  MEASURE_WIDTH_STEP,
   clampMeasureWidth,
 } from '../lib/readingPresets'
 
@@ -21,9 +22,9 @@ export function MeasureWidthControl({ value, onChange }: Props) {
         <div className="inline-flex items-center rounded-md border border-white/10 bg-white/[0.04]">
           <button
             type="button"
-            onClick={() => bump(-4)}
+            onClick={() => bump(-MEASURE_WIDTH_STEP)}
             disabled={value <= MEASURE_WIDTH_MIN}
-            title="Narrower"
+            title="Narrower (⌘⇧+scroll)"
             aria-label="Narrower line width"
             className="inline-flex h-6 w-6 items-center justify-center rounded-l-md text-[11px] text-ink-300 transition-colors hover:bg-white/[0.08] hover:text-ink-100 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-300/50"
           >
@@ -37,9 +38,9 @@ export function MeasureWidthControl({ value, onChange }: Props) {
           </span>
           <button
             type="button"
-            onClick={() => bump(4)}
+            onClick={() => bump(MEASURE_WIDTH_STEP)}
             disabled={value >= MEASURE_WIDTH_MAX}
-            title="Wider"
+            title="Wider (⌘⇧+scroll)"
             aria-label="Wider line width"
             className="inline-flex h-6 w-6 items-center justify-center rounded-r-md text-[11px] text-ink-300 transition-colors hover:bg-white/[0.08] hover:text-ink-100 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-300/50"
           >

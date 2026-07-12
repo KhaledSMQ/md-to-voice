@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent } from 'react'
 import { MarkdownReader, type MarkdownReaderHandle, type PlayheadVisibility } from './MarkdownReader'
 import { Controls } from './Controls'
 import { ColumnResizeHandle } from './ColumnResizeHandle'
@@ -11,6 +11,7 @@ import { RecentsList } from './RecentsList'
 import { TeleprompterOverlay } from './TeleprompterOverlay'
 import { FileUploader } from './FileUploader'
 import { ShortcutsHelp } from './ShortcutsHelp'
+import { ReaderHud } from './ReaderHud'
 import { usePlayer } from '../lib/usePlayer'
 import {
   loadAppSettings,
@@ -18,12 +19,27 @@ import {
   CONTROLS_WIDTH_MIN,
   CONTROLS_WIDTH_MAX,
   DEFAULT_APP_SETTINGS,
+  SPEED_STEP,
+  clampFontSize,
+  clampSpeed,
 } from '../lib/appSettings'
 import type { ReadingPresetId } from '../lib/readingPresets'
-import { measureWidthCss } from '../lib/readingPresets'
+import {
+  MEASURE_WIDTH_DEFAULT,
+  MEASURE_WIDTH_MAX,
+  MEASURE_WIDTH_STEP,
+  clampMeasureWidth,
+  measureWidthCss,
+} from '../lib/readingPresets'
+import { readingBrightnessCssVars } from '../lib/readingBrightness'
+import {
+  readingTypographyMeta,
+  type ReadingTypographyId,
+} from '../lib/readingTypography'
 import type { ParsedDocument } from '../lib/parseDocument'
-import type { StoredDocument } from '../lib/documentStore'
+import { sortRecents, type StoredDocument } from '../lib/documentStore'
 import { scrollHeadingIntoContainer } from '../lib/documentOutline'
+import { adjacentSentenceStart } from '../lib/sentenceNav'
 import {
   applyPreviewSearchHighlights,
   clearPreviewSearchHighlights,
@@ -59,6 +75,10 @@ type Props = {
   onFontSizeChange: (size: number) => void
   readingPreset: ReadingPresetId
   onReadingPresetChange: (preset: ReadingPresetId) => void
+  readingTypography: ReadingTypographyId
+  onReadingTypographyChange: (id: ReadingTypographyId) => void
+  readingBrightness: number
+  onReadingBrightnessChange: (brightness: number) => void
   measureWidth: number
   onMeasureWidthChange: (ch: number) => void
   controlsWidth: number
@@ -91,16 +111,40 @@ export function Reader({
   onFontSizeChange,
   readingPreset,
   onReadingPresetChange,
+  readingTypography,
+  onReadingTypographyChange,
+  readingBrightness,
+  onReadingBrightnessChange,
   measureWidth,
   onMeasureWidthChange,
   controlsWidth,
   onControlsWidthChange,
 }: Props) {
   const readerRef = useRef<MarkdownReaderHandle>(null)
+  const readerSurfaceRef = useRef<HTMLDivElement>(null)
+  const fontSizeRef = useRef(fontSize)
+  fontSizeRef.current = fontSize
+  const measureWidthRef = useRef(measureWidth)
+  measureWidthRef.current = measureWidth
+  const face = readingTypographyMeta(readingTypography)
+  const surfaceStyle = useMemo(
+    () =>
+      ({
+        ...readingBrightnessCssVars(readingPreset, readingBrightness),
+        ['--reader-font' as string]: face.stack,
+        ['--reader-leading' as string]: face.leading,
+        ['--reader-tracking' as string]: face.tracking,
+      }) as CSSProperties,
+    [readingPreset, readingBrightness, face.stack, face.leading, face.tracking],
+  )
   const previewFrameRef = useRef<HTMLDivElement>(null)
   const inlineEditorRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [inlineEdit, setInlineEdit] = useState(false)
+  const [focusMode, setFocusMode] = useState(false)
+  const [bookmarkWordIdx, setBookmarkWordIdx] = useState<number | null>(null)
+  const [hudMessage, setHudMessage] = useState<string | null>(null)
+  const hudTimer = useRef<number>(0)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchMatches, setSearchMatches] = useState<Range[]>([])
@@ -270,12 +314,75 @@ export function Reader({
     !noPlayableText &&
     (player.status === 'playing' || player.status === 'paused')
 
-  const immersive = readingFocus
+  const immersive = readingFocus || focusMode
 
   useEffect(() => {
-    onReadingFocusChange?.(readingFocus)
+    if (inlineEdit && focusMode) setFocusMode(false)
+  }, [inlineEdit, focusMode])
+
+  useEffect(() => {
+    setBookmarkWordIdx(null)
+  }, [activeDocId])
+
+  const showHud = useCallback((text: string, ms = 900) => {
+    setHudMessage(text)
+    window.clearTimeout(hudTimer.current)
+    hudTimer.current = window.setTimeout(() => setHudMessage(null), ms)
+  }, [])
+
+  useEffect(() => {
+    return () => window.clearTimeout(hudTimer.current)
+  }, [])
+
+  const bumpFontSize = useCallback(
+    (delta: number) => {
+      const next = clampFontSize(fontSizeRef.current + delta)
+      if (next === fontSizeRef.current) return
+      onFontSizeChange(next)
+      showHud(`${next}px`)
+    },
+    [onFontSizeChange, showHud],
+  )
+
+  const bumpMeasureWidth = useCallback(
+    (delta: number) => {
+      const next = clampMeasureWidth(measureWidthRef.current + delta)
+      if (next === measureWidthRef.current) return
+      onMeasureWidthChange(next)
+      showHud(next >= MEASURE_WIDTH_MAX ? 'Full width' : `${next}ch`)
+    },
+    [onMeasureWidthChange, showHud],
+  )
+
+  const resetReadingZoom = useCallback(() => {
+    onFontSizeChange(DEFAULT_APP_SETTINGS.fontSize)
+    onMeasureWidthChange(MEASURE_WIDTH_DEFAULT)
+    showHud(`${DEFAULT_APP_SETTINGS.fontSize}px · ${MEASURE_WIDTH_DEFAULT}ch`)
+  }, [onFontSizeChange, onMeasureWidthChange, showHud])
+
+  const bumpSpeed = useCallback(
+    (delta: number) => {
+      setSpeed((prev) => {
+        const next = clampSpeed(prev + delta)
+        if (next !== prev) showHud(`${next.toFixed(2)}×`)
+        return next
+      })
+    },
+    [showHud],
+  )
+
+  const sortedDocuments = useMemo(
+    () =>
+      sortRecents(documents, loadAppSettings().recentsSort, (d) =>
+        d.id === activeDocId ? sourceName : d.title,
+      ),
+    [documents, activeDocId, sourceName],
+  )
+
+  useEffect(() => {
+    onReadingFocusChange?.(immersive)
     return () => onReadingFocusChange?.(false)
-  }, [readingFocus, onReadingFocusChange])
+  }, [immersive, onReadingFocusChange])
 
   useEffect(() => {
     if (player.status === 'ready' || player.status === 'idle' || player.status === 'finished') {
@@ -297,6 +404,22 @@ export function Reader({
   useEffect(() => {
     playerRef.current = player
   }, [player])
+
+  const skipSentence = useCallback(
+    (delta: 1 | -1) => {
+      const words = parsed.words
+      if (words.length === 0) return
+      const from =
+        playerRef.current.activeWordIdx >= 0
+          ? playerRef.current.activeWordIdx
+          : (words[0]?.idx ?? 0)
+      const target = adjacentSentenceStart(words, from, delta)
+      if (target == null) return
+      void playerRef.current.seekToWord(target)
+      showHud(delta > 0 ? 'Next sentence' : 'Previous sentence')
+    },
+    [parsed.words, showHud],
+  )
 
   const handleStop = useCallback(() => {
     if (resumeTimer.current) {
@@ -371,9 +494,14 @@ export function Reader({
     prevPlayerStatus.current = player.status
   }, [player.status, onPlaybackBegan, flushResumeSave, resumeBannerKey])
 
-  const onWordClick = useCallback((wIdx: number) => {
-    void playerRef.current.seekToWord(wIdx)
-  }, [])
+  const onWordClick = useCallback(
+    (wIdx: number) => {
+      void playerRef.current.seekToWord(wIdx)
+      const word = parsed.words.find((w) => w.idx === wIdx)
+      showHud(word ? `Playing from “${word.text}”` : 'Playing from here', 1200)
+    },
+    [parsed.words, showHud],
+  )
 
   useEffect(() => {
     readerRef.current?.reset()
@@ -653,6 +781,30 @@ export function Reader({
   }, [searchActive, useCssHighlight, searchMatches, searchIndex])
 
   useEffect(() => {
+    const el = readerSurfaceRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return
+      // macOS often remaps Shift+wheel to deltaX (horizontal).
+      const raw = e.shiftKey
+        ? e.deltaY !== 0
+          ? e.deltaY
+          : e.deltaX
+        : e.deltaY
+      if (raw === 0) return
+      e.preventDefault()
+      const delta = raw < 0 ? 1 : -1
+      if (e.shiftKey) {
+        bumpMeasureWidth(delta * MEASURE_WIDTH_STEP)
+        return
+      }
+      bumpFontSize(delta)
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [bumpFontSize, bumpMeasureWidth])
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const isMod = e.metaKey || e.ctrlKey
       const inField =
@@ -675,6 +827,68 @@ export function Reader({
         else goNextSearch()
         return
       }
+      if (isMod && (e.key === '=' || e.key === '+' || e.code === 'NumpadAdd')) {
+        e.preventDefault()
+        bumpFontSize(1)
+        return
+      }
+      if (isMod && (e.key === '-' || e.key === '_' || e.code === 'NumpadSubtract')) {
+        e.preventDefault()
+        bumpFontSize(-1)
+        return
+      }
+      if (isMod && (e.key === '0' || e.code === 'Digit0' || e.code === 'Numpad0')) {
+        e.preventDefault()
+        resetReadingZoom()
+        return
+      }
+      if (isMod && e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        if (sortedDocuments.length === 0) return
+        e.preventDefault()
+        const cur = sortedDocuments.findIndex((d) => d.id === activeDocId)
+        const delta = e.key === 'ArrowUp' ? -1 : 1
+        const next =
+          sortedDocuments[
+            (cur < 0 ? 0 : cur + delta + sortedDocuments.length) % sortedDocuments.length
+          ]
+        if (next && next.id !== activeDocId) onSelectDocument(next.id)
+        return
+      }
+      if (isMod && !e.altKey && e.key >= '1' && e.key <= '9') {
+        const doc = sortedDocuments[Number(e.key) - 1]
+        if (!doc) return
+        e.preventDefault()
+        if (doc.id !== activeDocId) onSelectDocument(doc.id)
+        return
+      }
+      if (isMod && (e.key === 'v' || e.key === 'V')) {
+        if (inField || inlineEdit || showTeleprompter) return
+        e.preventDefault()
+        void handlePasteClick()
+        return
+      }
+      if (e.key === '/' && !e.shiftKey && !isMod && !e.altKey) {
+        if (inField || showTeleprompter) return
+        e.preventDefault()
+        const next = !inlineEdit
+        if (next) closeSearch()
+        setInlineEdit(next)
+        showHud(next ? 'Editing' : 'Preview')
+        return
+      }
+      if ((e.key === 'o' || e.key === 'O') && !isMod) {
+        if (inField || inlineEdit || showTeleprompter) return
+        e.preventDefault()
+        if (!outlineAvailable) {
+          showHud('No sections')
+          return
+        }
+        const next = !outlineOpen
+        if (next) closeSearch()
+        setOutlineOpen(next)
+        showHud(next ? 'Sections' : 'Sections hidden')
+        return
+      }
       if (inField) return
 
       if (e.key === '?' || (e.shiftKey && e.key === '/')) {
@@ -690,12 +904,6 @@ export function Reader({
         return
       }
 
-      if (isMod && (e.key === 'v' || e.key === 'V')) {
-        if (inlineEdit || showTeleprompter) return
-        e.preventDefault()
-        void handlePasteClick()
-        return
-      }
       if (e.code === 'Space') {
         e.preventDefault()
         playerRef.current.toggle()
@@ -705,12 +913,50 @@ export function Reader({
           closeSearch()
           return
         }
+        if (outlineOpen) {
+          e.preventDefault()
+          setOutlineOpen(false)
+          showHud('Sections hidden')
+          return
+        }
         if (showTeleprompter) {
           e.preventDefault()
           setTeleprompterDismissed(true)
           return
         }
+        if (focusMode) {
+          e.preventDefault()
+          setFocusMode(false)
+          return
+        }
         handleStop()
+      } else if (e.key === 'f' || e.key === 'F') {
+        if (inlineEdit || noPlayableText || showTeleprompter) return
+        e.preventDefault()
+        const next = !focusMode
+        setFocusMode(next)
+        showHud(next ? 'Focus mode' : 'Focus off')
+      } else if (e.key === 'b' || e.key === 'B') {
+        if (noPlayableText) return
+        e.preventDefault()
+        const w =
+          playerRef.current.activeWordIdx >= 0
+            ? playerRef.current.activeWordIdx
+            : openResume > 0
+              ? openResume
+              : (parsed.words[0]?.idx ?? null)
+        if (w == null) return
+        setBookmarkWordIdx(w)
+        const word = parsed.words.find((t) => t.idx === w)
+        showHud(word ? `Bookmark “${word.text}”` : 'Bookmark set')
+      } else if (e.key === "'") {
+        if (bookmarkWordIdx == null) {
+          showHud('No bookmark')
+          return
+        }
+        e.preventDefault()
+        void playerRef.current.seekToWord(bookmarkWordIdx)
+        showHud('Jumped to bookmark')
       } else if (e.key === 't' || e.key === 'T') {
         const live =
           playerRef.current.status === 'playing' || playerRef.current.status === 'paused'
@@ -723,6 +969,18 @@ export function Reader({
         closeSearch()
         setTeleprompterMode(true)
         setTeleprompterDismissed(false)
+      } else if (e.key === 'j' || e.key === 'J') {
+        e.preventDefault()
+        skipSentence(1)
+      } else if (e.key === 'k' || e.key === 'K') {
+        e.preventDefault()
+        skipSentence(-1)
+      } else if (e.key === ',' || e.key === '<') {
+        e.preventDefault()
+        bumpSpeed(-SPEED_STEP)
+      } else if (e.key === '.' || e.key === '>') {
+        e.preventDefault()
+        bumpSpeed(SPEED_STEP)
       } else if (e.key === '[' || e.code === 'ArrowLeft') {
         e.preventDefault()
         void playerRef.current.skipChunk(-1)
@@ -745,6 +1003,20 @@ export function Reader({
     goNextSearch,
     goPrevSearch,
     helpOpen,
+    bumpFontSize,
+    resetReadingZoom,
+    sortedDocuments,
+    activeDocId,
+    onSelectDocument,
+    focusMode,
+    showHud,
+    bookmarkWordIdx,
+    openResume,
+    parsed.words,
+    skipSentence,
+    bumpSpeed,
+    outlineAvailable,
+    outlineOpen,
   ])
 
   return (
@@ -783,6 +1055,10 @@ export function Reader({
         onFontSizeChange={onFontSizeChange}
         readingPreset={readingPreset}
         onReadingPresetChange={onReadingPresetChange}
+        readingTypography={readingTypography}
+        onReadingTypographyChange={onReadingTypographyChange}
+        readingBrightness={readingBrightness}
+        onReadingBrightnessChange={onReadingBrightnessChange}
         measureWidth={measureWidth}
         onMeasureWidthChange={onMeasureWidthChange}
         onPaste={() => void handlePasteClick()}
@@ -806,7 +1082,7 @@ export function Reader({
         listening={immersive}
       />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row lg:gap-0">
+      <div className={`flex min-h-0 flex-1 flex-col gap-4 lg:flex-row lg:gap-0 ${focusMode ? 'is-focus-mode' : ''}`}>
       <aside
         className="studio-deck min-w-0 w-full lg:shrink-0 lg:w-[var(--controls-width)] lg:min-h-0 lg:overflow-y-auto"
         style={{ ['--controls-width' as string]: `${controlsWidth}px` }}
@@ -869,12 +1145,14 @@ export function Reader({
         onReset={() => onControlsWidthChange(DEFAULT_APP_SETTINGS.controlsWidth)}
         panelSide="end"
         ariaLabel="Resize controls panel"
-        className="hidden lg:block"
+        className={`column-resize-handle hidden lg:block ${focusMode ? '!hidden' : ''}`}
       />
 
       <div
+        ref={readerSurfaceRef}
         className={`relative flex min-w-0 min-h-[min(50vh,28rem)] flex-col panel-card lg:min-h-0 lg:flex-1 ${READER_MAX_H}`}
       >
+        <ReaderHud message={hudMessage} />
         {searchActive && (
           <PreviewSearchBar
             query={searchQuery}
@@ -892,6 +1170,8 @@ export function Reader({
           <div
             className="reader-preview flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
             data-reading-preset={readingPreset}
+            data-typography={readingTypography}
+            style={surfaceStyle}
           >
             <textarea
               ref={inlineEditorRef}
@@ -965,6 +1245,8 @@ export function Reader({
               ref={previewFrameRef}
               className="reader-preview relative min-h-0 min-w-0 flex-1 overflow-hidden"
               data-reading-preset={readingPreset}
+              data-typography={readingTypography}
+              style={surfaceStyle}
             >
               <MarkdownReader
                 reactNode={parsed.reactNode}
@@ -1019,6 +1301,34 @@ export function Reader({
             <span className="min-w-0 flex-1 truncate font-mono text-ink-400" title={sourceName}>
               {sourceName}
             </span>
+            {bookmarkWordIdx != null && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void playerRef.current.seekToWord(bookmarkWordIdx)
+                    showHud('Jumped to bookmark')
+                  }}
+                  title="Jump to bookmark (')"
+                  className="shrink-0 rounded border border-amber-300/25 bg-amber-300/10 px-1.5 py-0.5 font-mono text-[10px] text-amber-100/90 transition hover:bg-amber-300/20"
+                >
+                  Bookmark
+                </button>
+                <span className="shrink-0 text-ink-600" aria-hidden>
+                  ·
+                </span>
+              </>
+            )}
+            {focusMode && (
+              <>
+                <span className="shrink-0 rounded border border-white/10 px-1.5 py-0.5 text-[10px] text-ink-400">
+                  Focus
+                </span>
+                <span className="shrink-0 text-ink-600" aria-hidden>
+                  ·
+                </span>
+              </>
+            )}
             <span className="shrink-0 tabular-nums">
               {parsed.words.length.toLocaleString()} word
               {parsed.words.length === 1 ? '' : 's'}

@@ -58,6 +58,8 @@ export default function App() {
   const [controlsWidth, setControlsWidth] = useState(() => loadAppSettings().controlsWidth)
   const [fontSize, setFontSize] = useState(() => loadAppSettings().fontSize)
   const [readingPreset, setReadingPreset] = useState(() => loadAppSettings().readingPreset)
+  const [readingTypography, setReadingTypography] = useState(() => loadAppSettings().readingTypography)
+  const [readingBrightness, setReadingBrightness] = useState(() => loadAppSettings().readingBrightness)
   const [measureWidth, setMeasureWidth] = useState(() => loadAppSettings().measureWidth)
   const [storageBanner, setStorageBanner] = useState<string | null>(null)
   const [readingFocus, setReadingFocus] = useState(false)
@@ -167,11 +169,19 @@ export default function App() {
 
   useEffect(() => {
     const t = setTimeout(
-      () => saveAppSettings({ controlsWidth, fontSize, readingPreset, measureWidth }),
+      () =>
+        saveAppSettings({
+          controlsWidth,
+          fontSize,
+          readingPreset,
+          readingTypography,
+          readingBrightness,
+          measureWidth,
+        }),
       LAYOUT_SAVE_MS,
     )
     return () => clearTimeout(t)
-  }, [controlsWidth, fontSize, readingPreset, measureWidth])
+  }, [controlsWidth, fontSize, readingPreset, readingTypography, readingBrightness, measureWidth])
 
   const applyDocument = useCallback((d: StoredDocument) => {
     setDocId(d.id)
@@ -397,6 +407,10 @@ export default function App() {
           onFontSizeChange={setFontSize}
           readingPreset={readingPreset}
           onReadingPresetChange={setReadingPreset}
+          readingTypography={readingTypography}
+          onReadingTypographyChange={setReadingTypography}
+          readingBrightness={readingBrightness}
+          onReadingBrightnessChange={setReadingBrightness}
           measureWidth={measureWidth}
           onMeasureWidthChange={setMeasureWidth}
           controlsWidth={controlsWidth}

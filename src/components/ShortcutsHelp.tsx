@@ -9,14 +9,27 @@ type ShortcutRow = {
 
 const SHORTCUTS: ShortcutRow[] = [
   { keys: ['Space'], action: 'Play / pause' },
-  { keys: ['Esc'], action: 'Stop playback' },
+  { keys: ['Esc'], action: 'Stop · exit edit / sections / focus / overlay' },
   { keys: ['[', ']'], join: 'alt', action: 'Previous / next chunk' },
   { keys: ['←', '→'], join: 'alt', action: 'Previous / next chunk' },
+  { keys: ['J', 'K'], join: 'alt', action: 'Next / previous sentence' },
+  { keys: [',', '.'], join: 'alt', action: 'Slower / faster' },
+  { keys: ['B'], action: 'Set bookmark' },
+  { keys: ["'"], action: 'Jump to bookmark' },
+  { keys: ['/'], action: 'Toggle preview / edit' },
+  { keys: ['O'], action: 'Toggle sections sidebar' },
+  { keys: ['F'], action: 'Toggle focus mode' },
+  { keys: ['T'], action: 'Toggle teleprompter' },
   { keys: ['⌘', 'F'], join: 'chord', action: 'Find in preview' },
   { keys: ['⌘', 'G'], join: 'chord', action: 'Next find match' },
   { keys: ['⇧', '⌘', 'G'], join: 'chord', action: 'Previous find match' },
   { keys: ['⌘', 'V'], join: 'chord', action: 'Paste markdown' },
-  { keys: ['T'], action: 'Toggle teleprompter' },
+  { keys: ['⌘', '+', '−'], join: 'chord', action: 'Zoom preview text' },
+  { keys: ['⌘', 'Scroll'], join: 'chord', action: 'Zoom preview text' },
+  { keys: ['⌘', '⇧', 'Scroll'], join: 'chord', action: 'Adjust line width' },
+  { keys: ['⌘', '0'], join: 'chord', action: 'Reset zoom & line width' },
+  { keys: ['⌘', '1–9'], join: 'chord', action: 'Open recent document' },
+  { keys: ['⌘', '⌥', '↑', '↓'], join: 'chord', action: 'Cycle recent documents' },
   { keys: ['?'], action: 'Show this help' },
 ]
 
@@ -61,7 +74,7 @@ export function ShortcutsHelp({ open, onClose, backend }: Props) {
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="w-full max-w-md rounded-2xl border border-white/10 bg-ink-900/95 p-5 shadow-2xl shadow-ink-950/50"
+        className="max-h-[min(90vh,40rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-white/10 bg-ink-900/95 p-5 shadow-2xl shadow-ink-950/50"
       >
         <div className="flex items-start justify-between gap-3">
           <div>

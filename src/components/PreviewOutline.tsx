@@ -38,7 +38,7 @@ export function PreviewOutline({ items, open, onOpenChange, activeId, onSelect }
           onClick={() => onOpenChange(!open)}
           aria-expanded={open}
           aria-controls={listId}
-          title={open ? 'Hide sections' : 'Show sections'}
+          title={open ? 'Hide sections (O)' : 'Show sections (O)'}
           className={
             'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border text-ink-400 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/40 ' +
             (open

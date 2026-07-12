@@ -3,6 +3,8 @@
  * soft contrast (≈7–12:1 body, higher for Sharp), warm spectra at night
  * (lower blue / circadian load), cream paper to cut glare, and soft
  * near-black/near-white for accessibility without OLED bloom.
+ * Typography is chosen separately (see readingTypography.ts).
+ * Page light adjusts paper + ink luminance (see readingBrightness.ts).
  */
 
 export const READING_PRESET_IDS = ['night', 'sepia', 'day', 'contrast'] as const
@@ -51,6 +53,8 @@ export const DEFAULT_READING_PRESET: ReadingPresetId = 'night'
 export const MEASURE_WIDTH_MIN = 42
 export const MEASURE_WIDTH_MAX = 100
 export const MEASURE_WIDTH_DEFAULT = 66
+/** Step used by keyboard / ⌘⇧+scroll measure nudges. */
+export const MEASURE_WIDTH_STEP = 4
 
 export const MEASURE_WIDTH_PRESETS = [
   { id: 'narrow', label: 'Narrow', ch: 48 },

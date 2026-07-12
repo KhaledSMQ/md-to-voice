@@ -2,6 +2,8 @@ import { useEffect, useRef, type RefObject } from 'react'
 import type { Device, VoiceInfo } from '../lib/tts/types'
 import type { LoadProgress, PlayerStatus } from '../lib/usePlayer'
 import { AudioVisualizer } from './AudioVisualizer'
+import { VoiceCarousel } from './VoiceCarousel'
+import { MixControls } from './StudioMeters'
 
 type Props = {
   status: PlayerStatus
@@ -65,7 +67,6 @@ export function Controls({
 
   const ratio = progress.ratio ?? 0
   const ratioPct = Math.min(100, Math.max(0, ratio * 100))
-  const volumePct = Math.round(volume * 100)
   const isMuted = volume === 0
   const lastVolumeRef = useRef(volume > 0 ? volume : 0.85)
 
@@ -83,8 +84,6 @@ export function Controls({
     totalWords > 0 ? Math.min(100, Math.max(0, (heardOrdinal / totalWords) * 100)) : 0
 
   const chunkNumber = Math.max(0, currentChunkIdx + 1)
-
-  const selectedVoiceMeta = voices.find((v) => v.id === voice) ?? null
 
   const playLabel = isLoading
     ? 'Loading…'
@@ -213,106 +212,19 @@ export function Controls({
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-3">
-          <div>
-            <div className="mb-1 flex items-center justify-between">
-              <label htmlFor="tts-volume" className="text-[10px] font-medium uppercase tracking-wider text-ink-500">
-                Volume
-              </label>
-              <span className="text-[11px] font-mono tabular-nums text-ink-300">
-                {isMuted ? 'Muted' : `${volumePct}%`}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={toggleMute}
-                className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition-all active:scale-95 ${
-                  isMuted
-                    ? 'border-amber-300/40 bg-amber-300/15 text-amber-200'
-                    : 'border-white/10 bg-white/[0.04] text-ink-300 hover:border-white/20 hover:bg-white/10'
-                }`}
-                title={isMuted ? 'Unmute' : 'Mute'}
-                aria-label={isMuted ? 'Unmute' : 'Mute'}
-                aria-pressed={isMuted}
-              >
-                {isMuted ? <VolumeMutedIcon /> : <VolumeIcon />}
-              </button>
-              <input
-                id="tts-volume"
-                name="volume"
-                type="range"
-                min={0}
-                max={1}
-                step={0.01}
-                value={volume}
-                onChange={(e) => onVolume(Number(e.target.value))}
-                className="control-range min-w-0 flex-1"
-              />
-            </div>
-          </div>
-
-          <div>
-            <div className="mb-1 flex items-center justify-between">
-              <label htmlFor="tts-speed" className="text-[10px] font-medium uppercase tracking-wider text-ink-500">
-                Speed
-              </label>
-              <span className="text-[11px] font-mono tabular-nums text-ink-300">{speed.toFixed(2)}×</span>
-            </div>
-            <input
-              id="tts-speed"
-              name="speed"
-              type="range"
-              min={0.5}
-              max={1.5}
-              step={0.05}
-              value={speed}
-              onChange={(e) => onSpeed(Number(e.target.value))}
-              className="control-range"
-            />
-          </div>
-        </div>
+        <MixControls
+          volume={volume}
+          onVolume={onVolume}
+          speed={speed}
+          onSpeed={onSpeed}
+          muted={isMuted}
+          onToggleMute={toggleMute}
+        />
       </section>
 
       {/* Instruments */}
       <section className="studio-instruments" aria-label="Instruments">
-        <div className="space-y-1">
-          <div className="flex items-center justify-between gap-2">
-            <label htmlFor="tts-voice" className="text-[10px] font-medium uppercase tracking-wider text-ink-500">
-              Voice
-            </label>
-            {selectedVoiceMeta && (
-              <span className="truncate text-[10px] text-ink-500">
-                {selectedVoiceMeta.language === 'en-us'
-                  ? 'US'
-                  : selectedVoiceMeta.language === 'en-gb'
-                    ? 'UK'
-                    : selectedVoiceMeta.language}
-                {' · '}
-                {selectedVoiceMeta.gender === 'Female' ? 'F' : 'M'}
-                {selectedVoiceMeta.traits ? ` · ${selectedVoiceMeta.traits}` : ''}
-              </span>
-            )}
-          </div>
-          <select
-            id="tts-voice"
-            name="voice"
-            value={voice}
-            onChange={(e) => onVoice(e.target.value)}
-            className="studio-voice-select w-full rounded-lg border border-white/10 bg-ink-950/80 px-2.5 py-2 text-xs text-ink-100 transition-colors focus:outline-none focus:ring-2 focus:ring-amber-300/60"
-          >
-            {voices.length === 0 ? (
-              <option value={voice}>{voiceLabel(voice)}</option>
-            ) : (
-              voices.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name}
-                  {v.traits ? ` (${v.traits})` : ''}
-                </option>
-              ))
-            )}
-          </select>
-        </div>
+        <VoiceCarousel voices={voices} voice={voice} onVoice={onVoice} />
 
         <button
           type="button"
@@ -350,13 +262,6 @@ export function Controls({
       )}
     </div>
   )
-}
-
-/** Pretty-print a Kokoro voice id before the catalog loads (`af_heart` → `Heart`). */
-function voiceLabel(id: string): string {
-  const leaf = id.includes('_') ? id.slice(id.indexOf('_') + 1) : id
-  if (!leaf) return id
-  return leaf.charAt(0).toUpperCase() + leaf.slice(1)
 }
 
 function PlayIcon({ className = 'h-4 w-4' }: { className?: string }) {
@@ -410,25 +315,6 @@ function SpinnerIcon() {
     >
       <circle cx="12" cy="12" r="9" opacity="0.25" />
       <path d="M21 12a9 9 0 0 0-9-9" />
-    </svg>
-  )
-}
-
-function VolumeIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5">
-      <path d="M11 5L6 9H3v6h3l5 4V5z" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" strokeLinecap="round" />
-      <path d="M19.07 4.93a9 9 0 0 1 0 12.73" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function VolumeMutedIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5">
-      <path d="M11 5L6 9H3v6h3l5 4V5z" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="m16 9 5 5M21 9l-5 5" strokeLinecap="round" />
     </svg>
   )
 }

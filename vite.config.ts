@@ -75,6 +75,15 @@ export default defineConfig({
   worker: {
     format: 'es',
   },
+  // Lightning CSS (Vite 8 default) still warns on valid ::highlight() selectors
+  // (parcel-bundler/lightningcss#1017) even though it preserves them. Use esbuild
+  // until a lightningcss release recognizes the Custom Highlight API pseudo.
+  build: {
+    cssMinify: 'esbuild',
+    // Kokoro/ORT live in the TTS worker (~2 MB JS + ~21 MB wasm). Already
+    // isolated via Worker; raising the limit avoids a noisy false alarm.
+    chunkSizeWarningLimit: 2500,
+  },
   optimizeDeps: {
     exclude: ['kokoro-js', '@huggingface/transformers'],
   },

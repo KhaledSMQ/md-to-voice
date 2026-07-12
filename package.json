@@ -13,6 +13,8 @@
   "dependencies": {
     "@chenglou/pretext": "^0.0.6",
     "@responsivevoice/text": "^2.0.0",
+    "embla-carousel": "^8.6.0",
+    "embla-carousel-react": "^8.6.0",
     "kokoro-js": "^1.2.1",
     "mdast-util-to-string": "^4.0.0",
     "react": "^19.2.5",
