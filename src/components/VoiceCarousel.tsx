@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef } from 'react'
 import useEmblaCarousel from 'embla-carousel-react'
 import type { EmblaCarouselType, EmblaEventType } from 'embla-carousel'
 import type { VoiceInfo } from '../lib/tts/types'
@@ -17,7 +17,7 @@ function numberWithinRange(n: number, min: number, max: number): number {
   return Math.min(Math.max(n, min), max)
 }
 
-export function VoiceCarousel({ voices, voice, onVoice }: Props) {
+export const VoiceCarousel = memo(function VoiceCarousel({ voices, voice, onVoice }: Props) {
   const slides = useMemo(() => {
     if (voices.length > 0) return voices
     return [
@@ -129,9 +129,10 @@ export function VoiceCarousel({ voices, voice, onVoice }: Props) {
     if (emblaApi.selectedScrollSnap() === idx) return
     syncingRef.current = true
     emblaApi.scrollTo(idx)
-    requestAnimationFrame(() => {
+    const raf = requestAnimationFrame(() => {
       syncingRef.current = false
     })
+    return () => cancelAnimationFrame(raf)
   }, [emblaApi, voice, slides])
 
   useEffect(() => {
@@ -219,7 +220,7 @@ export function VoiceCarousel({ voices, voice, onVoice }: Props) {
       ) : null}
     </div>
   )
-}
+})
 
 function ChevronLeft() {
   return (

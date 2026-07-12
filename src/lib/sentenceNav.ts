@@ -19,8 +19,10 @@ export function adjacentSentenceStart(
   words: WordToken[],
   fromWordIdx: number,
   delta: 1 | -1,
+  /** Precomputed starts (e.g. from `useMemo`) to avoid O(n) rebuild per keypress. */
+  precomputedStarts?: number[],
 ): number | null {
-  const starts = sentenceStartIndices(words)
+  const starts = precomputedStarts ?? sentenceStartIndices(words)
   if (starts.length === 0) return null
 
   let cur = 0

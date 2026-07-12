@@ -1,6 +1,11 @@
-import { useEffect, useRef, type RefObject } from 'react'
+import { memo, useEffect, useRef, type RefObject } from 'react'
 import type { Device, VoiceInfo } from '../lib/tts/types'
-import type { LoadProgress, PlayerStatus } from '../lib/usePlayer'
+import {
+  useActiveWordIdx,
+  type ActiveWordStore,
+  type LoadProgress,
+  type PlayerStatus,
+} from '../lib/usePlayer'
 import { AudioVisualizer } from './AudioVisualizer'
 import { VoiceCarousel } from './VoiceCarousel'
 import { MixControls } from './StudioMeters'
@@ -17,7 +22,7 @@ type Props = {
   totalChunks: number
   currentChunkIdx: number
   totalWords: number
-  activeWordIdx: number
+  activeWordStore: ActiveWordStore
   analyserRef: RefObject<AnalyserNode | null>
   onVoice: (voice: string) => void
   onSpeed: (speed: number) => void
@@ -31,7 +36,7 @@ type Props = {
   onTeleprompterMode: (enabled: boolean) => void
 }
 
-export function Controls({
+export const Controls = memo(function Controls({
   status,
   device,
   voices,
@@ -43,7 +48,7 @@ export function Controls({
   totalChunks,
   currentChunkIdx,
   totalWords,
-  activeWordIdx,
+  activeWordStore,
   analyserRef,
   onVoice,
   onSpeed,
@@ -56,6 +61,7 @@ export function Controls({
   teleprompterMode,
   onTeleprompterMode,
 }: Props) {
+  const activeWordIdx = useActiveWordIdx(activeWordStore)
   const isLoading = status === 'loading-model'
   const isPlaying = status === 'playing'
   const canPause = status === 'playing'
@@ -262,7 +268,7 @@ export function Controls({
       )}
     </div>
   )
-}
+})
 
 function PlayIcon({ className = 'h-4 w-4' }: { className?: string }) {
   return (

@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { WordToken } from '../lib/tokenize'
+import { useActiveWordIdx, type ActiveWordStore } from '../lib/usePlayer'
 
 type Props = {
   words: WordToken[]
-  activeWordIdx: number
+  activeWordStore: ActiveWordStore
   playing: boolean
   canSkip: boolean
   onWordClick: (wIdx: number) => void
@@ -39,7 +40,7 @@ const BROWSE_IDLE_MS = 900
  */
 export function TeleprompterOverlay({
   words,
-  activeWordIdx,
+  activeWordStore,
   playing,
   canSkip,
   onWordClick,
@@ -48,6 +49,7 @@ export function TeleprompterOverlay({
   onNextChunk,
   onDismiss,
 }: Props) {
+  const activeWordIdx = useActiveWordIdx(activeWordStore)
   const scrollerRef = useRef<HTMLDivElement>(null)
   const lineRefs = useRef<(HTMLParagraphElement | null)[]>([])
   const scrollRafRef = useRef<number | null>(null)

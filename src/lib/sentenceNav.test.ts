@@ -19,4 +19,10 @@ describe('sentenceNav', () => {
     expect(adjacentSentenceStart(words, 0, -1)).toBeNull()
     expect(adjacentSentenceStart(words, 5, 1)).toBeNull()
   })
+
+  it('accepts precomputed sentence starts', () => {
+    const starts = sentenceStartIndices(words)
+    expect(adjacentSentenceStart(words, 1, 1, starts)).toBe(2)
+    expect(adjacentSentenceStart(words, 3, -1, starts)).toBe(0)
+  })
 })

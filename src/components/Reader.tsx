@@ -37,9 +37,9 @@ import {
   type ReadingTypographyId,
 } from '../lib/readingTypography'
 import type { ParsedDocument } from '../lib/parseDocument'
-import { sortRecents, type StoredDocument } from '../lib/documentStore'
+import { sortRecents, type RecentsSort, type StoredDocument } from '../lib/documentStore'
 import { scrollHeadingIntoContainer } from '../lib/documentOutline'
-import { adjacentSentenceStart } from '../lib/sentenceNav'
+import { adjacentSentenceStart, sentenceStartIndices } from '../lib/sentenceNav'
 import {
   applyPreviewSearchHighlights,
   clearPreviewSearchHighlights,
@@ -88,6 +88,8 @@ type Props = {
 const READER_MAX_H = 'reader-panel min-h-0 flex-1'
 const UI_SAVE_MS = 400
 const RESUME_DEBOUNCE_MS = 700
+const SEARCH_DEBOUNCE_MS = 150
+const USE_CSS_HIGHLIGHT = cssHighlightSupported()
 
 export function Reader({
   activeDocId,
@@ -158,13 +160,14 @@ export function Reader({
   const searchMatchesRef = useRef<Range[]>([])
   const searchIndexRef = useRef(0)
   const outlineUnlockTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const useCssHighlight = cssHighlightSupported()
+  const useCssHighlight = USE_CSS_HIGHLIGHT
 
   const noPlayableText = !markdown.trim() || parsed.words.length === 0
 
   const [voice, setVoice] = useState(() => loadAppSettings().voice)
   const [speed, setSpeed] = useState(() => loadAppSettings().speed)
   const [volume, setVolume] = useState(() => loadAppSettings().volume)
+  const [recentsSort, setRecentsSort] = useState<RecentsSort>(() => loadAppSettings().recentsSort)
   const [teleprompterMode, setTeleprompterMode] = useState(
     () => loadAppSettings().teleprompterMode,
   )
@@ -293,6 +296,7 @@ export function Reader({
   }, [openResume, parsed.words])
 
   const player = usePlayer({
+    documentId: activeDocId,
     chunks: parsed.chunks,
     voice,
     speed,
@@ -300,6 +304,19 @@ export function Reader({
     onActiveWord,
     resumeAtWordIdx,
   })
+
+  const activeWordStore = useMemo(
+    () => ({
+      subscribeActiveWord: player.subscribeActiveWord,
+      getActiveWord: player.getActiveWord,
+    }),
+    [player.subscribeActiveWord, player.getActiveWord],
+  )
+
+  const sentenceStarts = useMemo(
+    () => sentenceStartIndices(parsed.words),
+    [parsed.words],
+  )
 
   const showTeleprompter =
     teleprompterMode &&
@@ -373,10 +390,10 @@ export function Reader({
 
   const sortedDocuments = useMemo(
     () =>
-      sortRecents(documents, loadAppSettings().recentsSort, (d) =>
+      sortRecents(documents, recentsSort, (d) =>
         d.id === activeDocId ? sourceName : d.title,
       ),
-    [documents, activeDocId, sourceName],
+    [documents, activeDocId, sourceName, recentsSort],
   )
 
   useEffect(() => {
@@ -410,15 +427,15 @@ export function Reader({
       const words = parsed.words
       if (words.length === 0) return
       const from =
-        playerRef.current.activeWordIdx >= 0
-          ? playerRef.current.activeWordIdx
+        playerRef.current.getActiveWord() >= 0
+          ? playerRef.current.getActiveWord()
           : (words[0]?.idx ?? 0)
-      const target = adjacentSentenceStart(words, from, delta)
+      const target = adjacentSentenceStart(words, from, delta, sentenceStarts)
       if (target == null) return
       void playerRef.current.seekToWord(target)
       showHud(delta > 0 ? 'Next sentence' : 'Previous sentence')
     },
-    [parsed.words, showHud],
+    [parsed.words, sentenceStarts, showHud],
   )
 
   const handleStop = useCallback(() => {
@@ -718,7 +735,7 @@ export function Reader({
     }
   }, [])
 
-  // Recompute matches when the query or document changes.
+  // Recompute matches when the query or document changes (debounced for large docs).
   useEffect(() => {
     if (!searchActive) {
       searchMatchesRef.current = []
@@ -734,12 +751,15 @@ export function Reader({
       setOverlayBoxes([])
       return
     }
-    const ranges = findTextRanges(container, searchQuery)
-    searchMatchesRef.current = ranges
-    setSearchMatches(ranges)
-    searchIndexRef.current = 0
-    setSearchIndex(0)
-    paintSearchHit(ranges, 0)
+    const t = window.setTimeout(() => {
+      const ranges = findTextRanges(container, searchQuery)
+      searchMatchesRef.current = ranges
+      setSearchMatches(ranges)
+      searchIndexRef.current = 0
+      setSearchIndex(0)
+      paintSearchHit(ranges, 0)
+    }, SEARCH_DEBOUNCE_MS)
+    return () => window.clearTimeout(t)
   }, [searchActive, searchQuery, parseKey, paintSearchHit])
 
   // Lock karaoke auto-scroll while find is active so hits stay navigable.
@@ -804,8 +824,66 @@ export function Reader({
     return () => el.removeEventListener('wheel', onWheel)
   }, [bumpFontSize, bumpMeasureWidth])
 
+  // Stable keydown listener — volatile state/callbacks live in a ref so toggling
+  // help/outline/search does not tear down and re-attach the window handler.
+  const keydownCtxRef = useRef({
+    inlineEdit,
+    noPlayableText,
+    showTeleprompter,
+    searchActive,
+    helpOpen,
+    focusMode,
+    outlineOpen,
+    outlineAvailable,
+    bookmarkWordIdx,
+    openResume,
+    activeDocId,
+    sortedDocuments,
+    parsedWords: parsed.words,
+    handleStop,
+    handlePasteClick,
+    openSearch,
+    closeSearch,
+    goNextSearch,
+    goPrevSearch,
+    bumpFontSize,
+    resetReadingZoom,
+    onSelectDocument,
+    showHud,
+    skipSentence,
+    bumpSpeed,
+  })
+  keydownCtxRef.current = {
+    inlineEdit,
+    noPlayableText,
+    showTeleprompter,
+    searchActive,
+    helpOpen,
+    focusMode,
+    outlineOpen,
+    outlineAvailable,
+    bookmarkWordIdx,
+    openResume,
+    activeDocId,
+    sortedDocuments,
+    parsedWords: parsed.words,
+    handleStop,
+    handlePasteClick,
+    openSearch,
+    closeSearch,
+    goNextSearch,
+    goPrevSearch,
+    bumpFontSize,
+    resetReadingZoom,
+    onSelectDocument,
+    showHud,
+    skipSentence,
+    bumpSpeed,
+  }
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const ctx = keydownCtxRef.current
       const isMod = e.metaKey || e.ctrlKey
       const inField =
         e.target instanceof HTMLElement &&
@@ -815,78 +893,78 @@ export function Reader({
           e.target.isContentEditable)
 
       if (isMod && (e.key === 'f' || e.key === 'F')) {
-        if (inlineEdit || noPlayableText || showTeleprompter) return
+        if (ctx.inlineEdit || ctx.noPlayableText || ctx.showTeleprompter) return
         e.preventDefault()
-        openSearch()
+        ctx.openSearch()
         return
       }
       if (isMod && (e.key === 'g' || e.key === 'G')) {
-        if (!searchActive || searchMatchesRef.current.length === 0) return
+        if (!ctx.searchActive || searchMatchesRef.current.length === 0) return
         e.preventDefault()
-        if (e.shiftKey) goPrevSearch()
-        else goNextSearch()
+        if (e.shiftKey) ctx.goPrevSearch()
+        else ctx.goNextSearch()
         return
       }
       if (isMod && (e.key === '=' || e.key === '+' || e.code === 'NumpadAdd')) {
         e.preventDefault()
-        bumpFontSize(1)
+        ctx.bumpFontSize(1)
         return
       }
       if (isMod && (e.key === '-' || e.key === '_' || e.code === 'NumpadSubtract')) {
         e.preventDefault()
-        bumpFontSize(-1)
+        ctx.bumpFontSize(-1)
         return
       }
       if (isMod && (e.key === '0' || e.code === 'Digit0' || e.code === 'Numpad0')) {
         e.preventDefault()
-        resetReadingZoom()
+        ctx.resetReadingZoom()
         return
       }
       if (isMod && e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
-        if (sortedDocuments.length === 0) return
+        if (ctx.sortedDocuments.length === 0) return
         e.preventDefault()
-        const cur = sortedDocuments.findIndex((d) => d.id === activeDocId)
+        const cur = ctx.sortedDocuments.findIndex((d) => d.id === ctx.activeDocId)
         const delta = e.key === 'ArrowUp' ? -1 : 1
         const next =
-          sortedDocuments[
-            (cur < 0 ? 0 : cur + delta + sortedDocuments.length) % sortedDocuments.length
+          ctx.sortedDocuments[
+            (cur < 0 ? 0 : cur + delta + ctx.sortedDocuments.length) % ctx.sortedDocuments.length
           ]
-        if (next && next.id !== activeDocId) onSelectDocument(next.id)
+        if (next && next.id !== ctx.activeDocId) ctx.onSelectDocument(next.id)
         return
       }
       if (isMod && !e.altKey && e.key >= '1' && e.key <= '9') {
-        const doc = sortedDocuments[Number(e.key) - 1]
+        const doc = ctx.sortedDocuments[Number(e.key) - 1]
         if (!doc) return
         e.preventDefault()
-        if (doc.id !== activeDocId) onSelectDocument(doc.id)
+        if (doc.id !== ctx.activeDocId) ctx.onSelectDocument(doc.id)
         return
       }
       if (isMod && (e.key === 'v' || e.key === 'V')) {
-        if (inField || inlineEdit || showTeleprompter) return
+        if (inField || ctx.inlineEdit || ctx.showTeleprompter) return
         e.preventDefault()
-        void handlePasteClick()
+        void ctx.handlePasteClick()
         return
       }
       if (e.key === '/' && !e.shiftKey && !isMod && !e.altKey) {
-        if (inField || showTeleprompter) return
+        if (inField || ctx.showTeleprompter) return
         e.preventDefault()
-        const next = !inlineEdit
-        if (next) closeSearch()
+        const next = !ctx.inlineEdit
+        if (next) ctx.closeSearch()
         setInlineEdit(next)
-        showHud(next ? 'Editing' : 'Preview')
+        ctx.showHud(next ? 'Editing' : 'Preview')
         return
       }
       if ((e.key === 'o' || e.key === 'O') && !isMod) {
-        if (inField || inlineEdit || showTeleprompter) return
+        if (inField || ctx.inlineEdit || ctx.showTeleprompter) return
         e.preventDefault()
-        if (!outlineAvailable) {
-          showHud('No sections')
+        if (!ctx.outlineAvailable) {
+          ctx.showHud('No sections')
           return
         }
-        const next = !outlineOpen
-        if (next) closeSearch()
+        const next = !ctx.outlineOpen
+        if (next) ctx.closeSearch()
         setOutlineOpen(next)
-        showHud(next ? 'Sections' : 'Sections hidden')
+        ctx.showHud(next ? 'Sections' : 'Sections hidden')
         return
       }
       if (inField) return
@@ -896,7 +974,7 @@ export function Reader({
         setHelpOpen((v) => !v)
         return
       }
-      if (helpOpen) {
+      if (ctx.helpOpen) {
         if (e.code === 'Escape') {
           e.preventDefault()
           setHelpOpen(false)
@@ -908,79 +986,80 @@ export function Reader({
         e.preventDefault()
         playerRef.current.toggle()
       } else if (e.code === 'Escape') {
-        if (searchActive) {
+        if (ctx.searchActive) {
           e.preventDefault()
-          closeSearch()
+          ctx.closeSearch()
           return
         }
-        if (outlineOpen) {
+        if (ctx.outlineOpen) {
           e.preventDefault()
           setOutlineOpen(false)
-          showHud('Sections hidden')
+          ctx.showHud('Sections hidden')
           return
         }
-        if (showTeleprompter) {
+        if (ctx.showTeleprompter) {
           e.preventDefault()
           setTeleprompterDismissed(true)
           return
         }
-        if (focusMode) {
+        if (ctx.focusMode) {
           e.preventDefault()
           setFocusMode(false)
           return
         }
-        handleStop()
+        ctx.handleStop()
       } else if (e.key === 'f' || e.key === 'F') {
-        if (inlineEdit || noPlayableText || showTeleprompter) return
+        if (ctx.inlineEdit || ctx.noPlayableText || ctx.showTeleprompter) return
         e.preventDefault()
-        const next = !focusMode
+        const next = !ctx.focusMode
         setFocusMode(next)
-        showHud(next ? 'Focus mode' : 'Focus off')
+        ctx.showHud(next ? 'Focus mode' : 'Focus off')
       } else if (e.key === 'b' || e.key === 'B') {
-        if (noPlayableText) return
+        if (ctx.noPlayableText) return
         e.preventDefault()
+        const active = playerRef.current.getActiveWord()
         const w =
-          playerRef.current.activeWordIdx >= 0
-            ? playerRef.current.activeWordIdx
-            : openResume > 0
-              ? openResume
-              : (parsed.words[0]?.idx ?? null)
+          active >= 0
+            ? active
+            : ctx.openResume > 0
+              ? ctx.openResume
+              : (ctx.parsedWords[0]?.idx ?? null)
         if (w == null) return
         setBookmarkWordIdx(w)
-        const word = parsed.words.find((t) => t.idx === w)
-        showHud(word ? `Bookmark “${word.text}”` : 'Bookmark set')
+        const word = ctx.parsedWords.find((t) => t.idx === w)
+        ctx.showHud(word ? `Bookmark “${word.text}”` : 'Bookmark set')
       } else if (e.key === "'") {
-        if (bookmarkWordIdx == null) {
-          showHud('No bookmark')
+        if (ctx.bookmarkWordIdx == null) {
+          ctx.showHud('No bookmark')
           return
         }
         e.preventDefault()
-        void playerRef.current.seekToWord(bookmarkWordIdx)
-        showHud('Jumped to bookmark')
+        void playerRef.current.seekToWord(ctx.bookmarkWordIdx)
+        ctx.showHud('Jumped to bookmark')
       } else if (e.key === 't' || e.key === 'T') {
         const live =
           playerRef.current.status === 'playing' || playerRef.current.status === 'paused'
-        if (!live || inlineEdit || noPlayableText) return
+        if (!live || ctx.inlineEdit || ctx.noPlayableText) return
         e.preventDefault()
-        if (showTeleprompter) {
+        if (ctx.showTeleprompter) {
           setTeleprompterDismissed(true)
           return
         }
-        closeSearch()
+        ctx.closeSearch()
         setTeleprompterMode(true)
         setTeleprompterDismissed(false)
       } else if (e.key === 'j' || e.key === 'J') {
         e.preventDefault()
-        skipSentence(1)
+        ctx.skipSentence(1)
       } else if (e.key === 'k' || e.key === 'K') {
         e.preventDefault()
-        skipSentence(-1)
+        ctx.skipSentence(-1)
       } else if (e.key === ',' || e.key === '<') {
         e.preventDefault()
-        bumpSpeed(-SPEED_STEP)
+        ctx.bumpSpeed(-SPEED_STEP)
       } else if (e.key === '.' || e.key === '>') {
         e.preventDefault()
-        bumpSpeed(SPEED_STEP)
+        ctx.bumpSpeed(SPEED_STEP)
       } else if (e.key === '[' || e.code === 'ArrowLeft') {
         e.preventDefault()
         void playerRef.current.skipChunk(-1)
@@ -991,33 +1070,7 @@ export function Reader({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [
-    handleStop,
-    showTeleprompter,
-    inlineEdit,
-    noPlayableText,
-    handlePasteClick,
-    searchActive,
-    openSearch,
-    closeSearch,
-    goNextSearch,
-    goPrevSearch,
-    helpOpen,
-    bumpFontSize,
-    resetReadingZoom,
-    sortedDocuments,
-    activeDocId,
-    onSelectDocument,
-    focusMode,
-    showHud,
-    bookmarkWordIdx,
-    openResume,
-    parsed.words,
-    skipSentence,
-    bumpSpeed,
-    outlineAvailable,
-    outlineOpen,
-  ])
+  }, [])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
@@ -1036,7 +1089,7 @@ export function Reader({
       {showTeleprompter && (
         <TeleprompterOverlay
           words={parsed.words}
-          activeWordIdx={player.activeWordIdx}
+          activeWordStore={activeWordStore}
           playing={player.status === 'playing'}
           canSkip={parsed.chunks.length > 1}
           onWordClick={onWordClick}
@@ -1099,7 +1152,7 @@ export function Reader({
           totalChunks={parsed.chunks.length}
           currentChunkIdx={player.currentChunkIdx}
           totalWords={parsed.words.length}
-          activeWordIdx={player.activeWordIdx}
+          activeWordStore={activeWordStore}
           analyserRef={player.analyserRef}
           onVoice={setVoice}
           onSpeed={setSpeed}
@@ -1132,6 +1185,8 @@ export function Reader({
               onNewDocument={onNewDocument}
               onDeleteDocument={onDeleteDocument}
               onOpenFile={openFilePicker}
+              recentsSort={recentsSort}
+              onRecentsSortChange={setRecentsSort}
             />
           </div>
         </div>

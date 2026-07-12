@@ -76,6 +76,14 @@ export default function App() {
   const docIdRef = useRef(docId)
   const titleRef = useRef(title)
   const markdownRef = useRef(markdown)
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   useEffect(() => {
     parsedRef.current = parsed
@@ -91,6 +99,7 @@ export default function App() {
   }, [markdown])
 
   const reportStorageError = useCallback((err: unknown) => {
+    if (!mountedRef.current) return
     const msg =
       err instanceof StorageError
         ? err.message
@@ -103,6 +112,7 @@ export default function App() {
   const refreshDocuments = useCallback(async () => {
     try {
       const list = await listAllDocuments()
+      if (!mountedRef.current) return
       setDocuments(list)
     } catch (err) {
       reportStorageError(err)
@@ -144,6 +154,7 @@ export default function App() {
 
   useEffect(() => {
     if (boot.phase !== 'ready') return
+    let cancelled = false
     const t = setTimeout(() => {
       const meta = wordMetaFromParsed(parsedRef.current)
       void putDocument(docId, {
@@ -153,7 +164,7 @@ export default function App() {
         lastWordGlobalIdx: meta.lastWordGlobalIdx,
       })
         .then((updated) => {
-          if (!updated) return
+          if (cancelled || !mountedRef.current || !updated) return
           setDocuments((prev) => {
             const i = prev.findIndex((d) => d.id === updated.id)
             if (i < 0) return prev
@@ -164,7 +175,10 @@ export default function App() {
         })
         .catch(reportStorageError)
     }, SAVE_MS)
-    return () => clearTimeout(t)
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+    }
   }, [boot.phase, docId, title, markdown, reportStorageError])
 
   useEffect(() => {
@@ -191,6 +205,7 @@ export default function App() {
   }, [])
 
   const patchDocInList = useCallback((id: string, patch: Partial<StoredDocument>) => {
+    if (!mountedRef.current) return
     setDocuments((prev) => {
       const i = prev.findIndex((d) => d.id === id)
       if (i < 0) return prev
@@ -204,7 +219,10 @@ export default function App() {
     (w: number) => {
       const id = docIdRef.current
       void putResumeOnly(id, w)
-        .then(() => patchDocInList(id, { resumeWordIdx: w }))
+        .then(() => {
+          if (!mountedRef.current) return
+          patchDocInList(id, { resumeWordIdx: w })
+        })
         .catch(reportStorageError)
     },
     [patchDocInList, reportStorageError],
@@ -214,7 +232,10 @@ export default function App() {
     (w: number) => {
       const id = docIdRef.current
       void putResumeOnly(id, w)
-        .then(() => patchDocInList(id, { resumeWordIdx: w }))
+        .then(() => {
+          if (!mountedRef.current) return
+          patchDocInList(id, { resumeWordIdx: w })
+        })
         .catch(reportStorageError)
     },
     [patchDocInList, reportStorageError],
@@ -224,6 +245,7 @@ export default function App() {
     const id = docIdRef.current
     void putResumeOnly(id, 0)
       .then(() => {
+        if (!mountedRef.current) return
         patchDocInList(id, { resumeWordIdx: undefined })
         setOpenResume(0)
       })
@@ -243,8 +265,10 @@ export default function App() {
           lastWordGlobalIdx: meta.lastWordGlobalIdx,
         })
         const d = await getDocumentById(id)
+        if (!mountedRef.current) return
         if (d) {
           await setActiveId(d.id)
+          if (!mountedRef.current) return
           applyDocument(d)
           await refreshDocuments()
         }
@@ -268,6 +292,7 @@ export default function App() {
         wordCount: 0,
         lastWordGlobalIdx: 0,
       })
+      if (!mountedRef.current) return
       applyDocument(d)
       await refreshDocuments()
     } catch (err) {
@@ -286,6 +311,7 @@ export default function App() {
           lastWordGlobalIdx: meta.lastWordGlobalIdx,
         })
         const d = await createDocument(name || 'pasted.md', text, true)
+        if (!mountedRef.current) return
         applyDocument(d)
         await refreshDocuments()
       } catch (err) {
@@ -300,10 +326,12 @@ export default function App() {
       try {
         if (id !== docIdRef.current) {
           await deleteDocument(id)
+          if (!mountedRef.current) return
           await refreshDocuments()
           return
         }
         const next = await deleteDocument(id)
+        if (!mountedRef.current) return
         if (next) {
           applyDocument(next)
         } else {
@@ -311,6 +339,7 @@ export default function App() {
             wordCount: 0,
             lastWordGlobalIdx: 0,
           })
+          if (!mountedRef.current) return
           applyDocument(d)
         }
         await refreshDocuments()
@@ -325,6 +354,7 @@ export default function App() {
     const id = docIdRef.current
     void touchPlayed(id)
       .then(() => {
+        if (!mountedRef.current) return
         patchDocInList(id, { lastPlayedAt: Date.now() })
       })
       .catch(reportStorageError)

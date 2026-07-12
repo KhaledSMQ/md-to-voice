@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { loadAppSettings, saveAppSettings } from '../lib/appSettings'
+import { saveAppSettings } from '../lib/appSettings'
 import { sortRecents, type RecentsSort, type StoredDocument } from '../lib/documentStore'
 
 type Props = {
@@ -11,6 +11,8 @@ type Props = {
   onNewDocument: () => void
   onDeleteDocument: (id: string) => void
   onOpenFile: () => void
+  recentsSort: RecentsSort
+  onRecentsSortChange: (sort: RecentsSort) => void
 }
 
 function formatWhen(ts: number): string {
@@ -61,9 +63,10 @@ export function RecentsList({
   onNewDocument,
   onDeleteDocument,
   onOpenFile,
+  recentsSort,
+  onRecentsSortChange,
 }: Props) {
   const [recentsSearch, setRecentsSearch] = useState('')
-  const [recentsSort, setRecentsSort] = useState<RecentsSort>(() => loadAppSettings().recentsSort)
   const [sortMenuOpen, setSortMenuOpen] = useState(false)
   const sortMenuWrapRef = useRef<HTMLDivElement>(null)
   const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string } | null>(null)
@@ -82,8 +85,8 @@ export function RecentsList({
     return sortRecents(filtered, recentsSort, getTitle)
   }, [documents, recentsSearch, recentsSort, activeId, title])
 
-  const onRecentsSortChange = (s: RecentsSort) => {
-    setRecentsSort(s)
+  const changeSort = (s: RecentsSort) => {
+    onRecentsSortChange(s)
     saveAppSettings({ recentsSort: s })
     setSortMenuOpen(false)
   }
@@ -245,7 +248,7 @@ export function RecentsList({
                       key={id}
                       type="button"
                       role="menuitem"
-                      onClick={() => onRecentsSortChange(id)}
+                      onClick={() => changeSort(id)}
                       className={
                         'flex w-full items-center gap-2.5 px-2.5 py-2 text-left text-xs transition ' +
                         (recentsSort === id

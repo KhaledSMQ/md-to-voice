@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { TTSClient, type TTSResult } from './tts/ttsClient'
 import type { Device, ProgressEvent, VoiceInfo } from './tts/types'
 import type { Chunk } from './chunker'
 import { activeWordInChunk, chunkWordEndTimes } from './timing'
+import { playbackPlanKey } from './playbackPlanKey'
 
 export type PlayerStatus =
   | 'idle'
@@ -20,6 +21,8 @@ export type LoadProgress = {
 }
 
 type Options = {
+  /** Document identity — included in the reset fingerprint so identical markdown across docs still resets. */
+  documentId: string
   chunks: Chunk[]
   voice: string
   speed: number
@@ -35,7 +38,18 @@ type Options = {
 
 const PREFETCH_DEPTH = 2
 
+export type ActiveWordStore = {
+  subscribeActiveWord: (onStoreChange: () => void) => () => void
+  getActiveWord: () => number
+}
+
+/** Subscribe a leaf component to per-word playback progress without re-rendering the player owner. */
+export function useActiveWordIdx(store: ActiveWordStore): number {
+  return useSyncExternalStore(store.subscribeActiveWord, store.getActiveWord, store.getActiveWord)
+}
+
 export function usePlayer({
+  documentId,
   chunks,
   voice,
   speed,
@@ -50,7 +64,6 @@ export function usePlayer({
   const [progress, setProgress] = useState<LoadProgress>({})
   const [error, setError] = useState<string | null>(null)
   const [currentChunkIdx, setCurrentChunkIdx] = useState<number>(-1)
-  const [activeWordIdx, setActiveWordIdx] = useState<number>(-1)
 
   const clientRef = useRef<TTSClient | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -71,11 +84,62 @@ export function usePlayer({
   const playChunkRef = useRef<(chunkIdx: number) => Promise<void>>(async () => {})
   /** Restart word-highlight + end-detection after pause/resume. */
   const resumeTickRef = useRef<(() => void) | null>(null)
+  const mountedRef = useRef(true)
+  const activeWordRef = useRef(-1)
+  const activeWordListenersRef = useRef(new Set<() => void>())
+  const statusRef = useRef(status)
+  statusRef.current = status
 
-  const optionsRef = useRef({ voice, speed, volume, onActiveWord, onChunkChange, chunks, resumeAtWordIdx })
+  const optionsRef = useRef({
+    voice,
+    speed,
+    volume,
+    onActiveWord,
+    onChunkChange,
+    chunks,
+    resumeAtWordIdx,
+  })
   useEffect(() => {
-    optionsRef.current = { voice, speed, volume, onActiveWord, onChunkChange, chunks, resumeAtWordIdx }
+    optionsRef.current = {
+      voice,
+      speed,
+      volume,
+      onActiveWord,
+      onChunkChange,
+      chunks,
+      resumeAtWordIdx,
+    }
   }, [voice, speed, volume, onActiveWord, onChunkChange, chunks, resumeAtWordIdx])
+
+  const subscribeActiveWord = useCallback((onStoreChange: () => void): (() => void) => {
+    activeWordListenersRef.current.add(onStoreChange)
+    return () => {
+      activeWordListenersRef.current.delete(onStoreChange)
+    }
+  }, [])
+
+  const getActiveWord = useCallback((): number => activeWordRef.current, [])
+
+  const setActiveWord = useCallback((globalIdx: number): void => {
+    if (activeWordRef.current === globalIdx) return
+    activeWordRef.current = globalIdx
+    for (const listener of activeWordListenersRef.current) listener()
+  }, [])
+
+  const safeSetStatus = useCallback((next: PlayerStatus | ((s: PlayerStatus) => PlayerStatus)): void => {
+    if (!mountedRef.current) return
+    setStatus(next)
+  }, [])
+
+  const safeSetError = useCallback((msg: string | null): void => {
+    if (!mountedRef.current) return
+    setError(msg)
+  }, [])
+
+  const safeSetCurrentChunkIdx = useCallback((idx: number): void => {
+    if (!mountedRef.current) return
+    setCurrentChunkIdx(idx)
+  }, [])
 
   const disconnectSource = useCallback((): void => {
     sourceRef.current?.disconnect()
@@ -174,13 +238,13 @@ export function usePlayer({
     clientRef.current?.cancel()
     cursorRef.current = 0
     lastEmittedWordRef.current = -1
-    setCurrentChunkIdx(-1)
-    setActiveWordIdx(-1)
-    setStatus((s) => (s === 'idle' || s === 'loading-model' || s === 'error' ? s : 'ready'))
-  }, [releaseAudio])
+    setActiveWord(-1)
+    safeSetCurrentChunkIdx(-1)
+    safeSetStatus((s) => (s === 'idle' || s === 'loading-model' || s === 'error' ? s : 'ready'))
+  }, [releaseAudio, setActiveWord, safeSetCurrentChunkIdx, safeSetStatus])
 
-  // Stable fingerprint so we only reset when the TTS plan actually changes.
-  const chunksKey = `${chunks.length}:${chunks[0]?.text ?? ''}:${chunks[chunks.length - 1]?.text ?? ''}:${chunks[0]?.startWordIdx ?? -1}:${chunks[chunks.length - 1]?.endWordIdx ?? -1}`
+  // Stable fingerprint so we only reset when the TTS plan or document actually changes.
+  const chunksKey = playbackPlanKey(documentId, chunks)
   const chunksKeyRef = useRef(chunksKey)
 
   useEffect(() => {
@@ -215,21 +279,43 @@ export function usePlayer({
     cursorRef.current = chunkIdx >= 0 ? chunkIdx : 0
   }, [chunksKey, chunks, resumeAtWordIdx])
 
+  // Voice/speed change: drop stale prefetch; restart current chunk so audio matches UI.
+  // Deps are voice/speed only — releaseAudio/playChunk accessed via refs so identity churn
+  // cannot interrupt an in-progress clip.
+  const releaseAudioRef = useRef(releaseAudio)
+  releaseAudioRef.current = releaseAudio
   useEffect(() => {
-    if (prefetchRef.current.size === 0) return
     prefetchRef.current.clear()
     clientRef.current?.cancel()
+    const s = statusRef.current
+    if (s !== 'playing' && s !== 'paused') return
+    const idx = cursorRef.current
+    if (idx < 0) return
+    playTokenRef.current += 1
+    releaseAudioRef.current()
+    lastEmittedWordRef.current = -1
+    // Audio element was released; must regenerate with the new voice/speed.
+    playRequestedRef.current = true
+    if (mountedRef.current) setStatus('playing')
+    void playChunkRef.current(idx)
   }, [voice, speed])
 
   useEffect(() => {
+    mountedRef.current = true
     return () => {
+      mountedRef.current = false
+      playRequestedRef.current = false
+      playTokenRef.current += 1
       releaseAudio()
+      prefetchRef.current.clear()
+      clientRef.current?.cancel()
       void audioCtxRef.current?.close()
       audioCtxRef.current = null
       analyserRef.current = null
       sourceRef.current = null
       clientRef.current?.destroy()
       clientRef.current = null
+      activeWordListenersRef.current.clear()
     }
   }, [releaseAudio])
 
@@ -237,6 +323,7 @@ export function usePlayer({
     if (clientRef.current) return clientRef.current
     const client = new TTSClient()
     client.onProgress((e: ProgressEvent) => {
+      if (!mountedRef.current) return
       const ratio =
         typeof e.progress === 'number'
           ? e.progress > 1
@@ -251,21 +338,23 @@ export function usePlayer({
 
   const init = useCallback(async (): Promise<void> => {
     if (status === 'ready' || status === 'playing' || status === 'paused' || status === 'loading-model') return
-    setStatus('loading-model')
-    setError(null)
+    safeSetStatus('loading-model')
+    safeSetError(null)
     try {
       const client = ensureClient()
       const info = await client.init()
+      if (!mountedRef.current) return
       setDevice(info.device)
       setVoices(info.voices)
-      setStatus('ready')
+      safeSetStatus('ready')
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-      setStatus('error')
+      if (!mountedRef.current) return
+      safeSetError(err instanceof Error ? err.message : String(err))
+      safeSetStatus('error')
       clientRef.current?.destroy()
       clientRef.current = null
     }
-  }, [status, ensureClient])
+  }, [status, ensureClient, safeSetStatus, safeSetError])
 
   const requestChunk = useCallback(
     (chunkIdx: number): Promise<TTSResult> | null => {
@@ -303,12 +392,15 @@ export function usePlayer({
     }
   }, [])
 
-  const emitActive = useCallback((globalIdx: number): void => {
-    if (lastEmittedWordRef.current === globalIdx) return
-    lastEmittedWordRef.current = globalIdx
-    setActiveWordIdx(globalIdx)
-    optionsRef.current.onActiveWord(globalIdx)
-  }, [])
+  const emitActive = useCallback(
+    (globalIdx: number): void => {
+      if (lastEmittedWordRef.current === globalIdx) return
+      lastEmittedWordRef.current = globalIdx
+      setActiveWord(globalIdx)
+      optionsRef.current.onActiveWord(globalIdx)
+    },
+    [setActiveWord],
+  )
 
   const playChunk = useCallback(
     async (chunkIdx: number): Promise<void> => {
@@ -316,15 +408,15 @@ export function usePlayer({
       const all = optionsRef.current.chunks
       if (chunkIdx >= all.length) {
         releaseAudio()
-        setStatus('finished')
-        setCurrentChunkIdx(-1)
+        safeSetStatus('finished')
+        safeSetCurrentChunkIdx(-1)
         cursorRef.current = 0
         emitActive(-1)
         return
       }
 
       cursorRef.current = chunkIdx
-      setCurrentChunkIdx(chunkIdx)
+      safeSetCurrentChunkIdx(chunkIdx)
       optionsRef.current.onChunkChange?.(chunkIdx)
       prunePrefetchCache(chunkIdx)
 
@@ -335,12 +427,13 @@ export function usePlayer({
         result = await p
       } catch (err) {
         if ((err as Error).message === 'cancelled') return
-        setError((err as Error).message)
-        setStatus('error')
+        if (playTokenRef.current !== token || !mountedRef.current) return
+        safeSetError((err as Error).message)
+        safeSetStatus('error')
         return
       }
 
-      if (playTokenRef.current !== token || !playRequestedRef.current) return
+      if (playTokenRef.current !== token || !playRequestedRef.current || !mountedRef.current) return
 
       prefetchAhead(chunkIdx)
 
@@ -371,7 +464,7 @@ export function usePlayer({
       audio.src = url
       audioRef.current = audio
 
-      if (playTokenRef.current !== token || !playRequestedRef.current) {
+      if (playTokenRef.current !== token || !playRequestedRef.current || !mountedRef.current) {
         releaseAudio()
         return
       }
@@ -444,19 +537,19 @@ export function usePlayer({
 
       try {
         await audio.play()
-        if (playTokenRef.current !== token || !playRequestedRef.current) {
+        if (playTokenRef.current !== token || !playRequestedRef.current || !mountedRef.current) {
           releaseAudio()
           return
         }
-        setStatus('playing')
+        safeSetStatus('playing')
         void connectAnalyserTap(audio)
         stopRaf()
         rafRef.current = requestAnimationFrame(tick)
       } catch (err) {
         clearBackupTimer()
-        if (playTokenRef.current !== token) return
-        setError((err as Error).message)
-        setStatus('error')
+        if (playTokenRef.current !== token || !mountedRef.current) return
+        safeSetError((err as Error).message)
+        safeSetStatus('error')
       }
     },
     [
@@ -469,6 +562,9 @@ export function usePlayer({
       stopRaf,
       clearBackupTimer,
       disconnectSource,
+      safeSetStatus,
+      safeSetError,
+      safeSetCurrentChunkIdx,
     ],
   )
 
@@ -477,49 +573,53 @@ export function usePlayer({
   }, [playChunk])
 
   const play = useCallback(async (): Promise<void> => {
-    setError(null)
+    safeSetError(null)
     if (status === 'paused' && audioRef.current?.src) {
       playRequestedRef.current = true
       try {
         await audioRef.current.play()
-        setStatus('playing')
+        if (!mountedRef.current) return
+        safeSetStatus('playing')
         // Pause stops the rAF end-detector; restart it or we never advance.
         resumeTickRef.current?.()
       } catch (err) {
-        setError((err as Error).message)
-        setStatus('error')
+        if (!mountedRef.current) return
+        safeSetError((err as Error).message)
+        safeSetStatus('error')
       }
       return
     }
     await init()
-    if (clientRef.current == null) return
+    if (clientRef.current == null || !mountedRef.current) return
     const startIdx =
       status === 'finished' || cursorRef.current >= optionsRef.current.chunks.length
         ? 0
         : cursorRef.current
     playRequestedRef.current = true
-    setStatus('playing')
+    safeSetStatus('playing')
     void playChunk(startIdx)
-  }, [status, init, playChunk])
+  }, [status, init, playChunk, safeSetStatus, safeSetError])
 
   const pause = useCallback((): void => {
     playRequestedRef.current = false
     stopRaf()
     audioRef.current?.pause()
-    setStatus('paused')
-  }, [stopRaf])
+    safeSetStatus('paused')
+  }, [stopRaf, safeSetStatus])
 
   const stop = useCallback((): void => {
     playRequestedRef.current = false
     playTokenRef.current += 1
     releaseAudio()
+    prefetchRef.current.clear()
+    clientRef.current?.cancel()
     cursorRef.current = 0
     lastEmittedWordRef.current = -1
-    setCurrentChunkIdx(-1)
-    setActiveWordIdx(-1)
-    setStatus(clientRef.current ? 'ready' : 'idle')
+    setActiveWord(-1)
+    safeSetCurrentChunkIdx(-1)
+    safeSetStatus(clientRef.current ? 'ready' : 'idle')
     optionsRef.current.onActiveWord(-1)
-  }, [releaseAudio])
+  }, [releaseAudio, setActiveWord, safeSetCurrentChunkIdx, safeSetStatus])
 
   const seekToWord = useCallback(
     async (wIdx: number): Promise<void> => {
@@ -530,7 +630,7 @@ export function usePlayer({
       )
       if (chunkIdx < 0) return
 
-      setError(null)
+      safeSetError(null)
       playTokenRef.current += 1
       releaseAudio()
       clientRef.current?.cancel()
@@ -538,16 +638,16 @@ export function usePlayer({
 
       cursorRef.current = chunkIdx
       lastEmittedWordRef.current = -1
-      setCurrentChunkIdx(chunkIdx)
+      safeSetCurrentChunkIdx(chunkIdx)
 
       await init()
-      if (clientRef.current == null) return
+      if (clientRef.current == null || !mountedRef.current) return
 
       playRequestedRef.current = true
-      setStatus('playing')
+      safeSetStatus('playing')
       void playChunk(chunkIdx)
     },
-    [init, playChunk, releaseAudio],
+    [init, playChunk, releaseAudio, safeSetStatus, safeSetError, safeSetCurrentChunkIdx],
   )
 
   const skipChunk = useCallback(
@@ -558,7 +658,7 @@ export function usePlayer({
       const next = Math.max(0, Math.min(all.length - 1, base + delta))
       if (next === base && status === 'playing') return
 
-      setError(null)
+      safeSetError(null)
       playTokenRef.current += 1
       releaseAudio()
       clientRef.current?.cancel()
@@ -566,19 +666,19 @@ export function usePlayer({
 
       cursorRef.current = next
       lastEmittedWordRef.current = -1
-      setCurrentChunkIdx(next)
+      safeSetCurrentChunkIdx(next)
 
       const firstWord = all[next]?.words[0]?.idx
       if (firstWord != null) emitActive(firstWord)
 
       await init()
-      if (clientRef.current == null) return
+      if (clientRef.current == null || !mountedRef.current) return
 
       playRequestedRef.current = true
-      setStatus('playing')
+      safeSetStatus('playing')
       void playChunk(next)
     },
-    [status, init, playChunk, releaseAudio, emitActive],
+    [status, init, playChunk, releaseAudio, emitActive, safeSetStatus, safeSetError, safeSetCurrentChunkIdx],
   )
 
   const toggle = useCallback((): void => {
@@ -593,7 +693,9 @@ export function usePlayer({
     progress,
     error,
     currentChunkIdx,
-    activeWordIdx,
+    /** Snapshot helper for imperative refs (keyboard handlers). Prefer useActiveWordIdx in React trees. */
+    getActiveWord,
+    subscribeActiveWord,
     analyserRef,
     play,
     pause,
