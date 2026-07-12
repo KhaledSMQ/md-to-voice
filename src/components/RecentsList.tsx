@@ -113,8 +113,11 @@ export function RecentsList({
       if (e.key === 'Escape') setPendingDelete(null)
     }
     document.addEventListener('keydown', onKey)
-    requestAnimationFrame(() => deleteCancelRef.current?.focus())
-    return () => document.removeEventListener('keydown', onKey)
+    const raf = requestAnimationFrame(() => deleteCancelRef.current?.focus())
+    return () => {
+      cancelAnimationFrame(raf)
+      document.removeEventListener('keydown', onKey)
+    }
   }, [pendingDelete])
 
   const deleteDialog =

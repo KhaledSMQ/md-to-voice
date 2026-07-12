@@ -19,6 +19,7 @@ export function FileDropOverlay({ onFile, onError }: Props) {
   }, [])
 
   useEffect(() => {
+    let cancelled = false
     const onDragEnter = (e: DragEvent) => {
       if (!dragEventHasFiles(e)) return
       e.preventDefault()
@@ -42,6 +43,7 @@ export function FileDropOverlay({ onFile, onError }: Props) {
       const file = e.dataTransfer?.files?.[0]
       if (!file) return
       void readMarkdownFile(file).then((result) => {
+        if (cancelled) return
         if (result.ok) onFile(result.name, result.text)
         else onError?.(result.error)
       })
@@ -54,6 +56,7 @@ export function FileDropOverlay({ onFile, onError }: Props) {
     window.addEventListener('drop', onDrop)
     window.addEventListener('dragend', onDragEnd)
     return () => {
+      cancelled = true
       window.removeEventListener('dragenter', onDragEnter)
       window.removeEventListener('dragleave', onDragLeave)
       window.removeEventListener('dragover', onDragOver)

@@ -294,7 +294,11 @@ export function usePlayer({
     playTokenRef.current += 1
     releaseAudioRef.current()
     lastEmittedWordRef.current = -1
-    // Audio element was released; must regenerate with the new voice/speed.
+    if (s === 'paused') {
+      // Keep paused — next Play regenerates with the new voice/speed (no src left to resume).
+      playRequestedRef.current = false
+      return
+    }
     playRequestedRef.current = true
     if (mountedRef.current) setStatus('playing')
     void playChunkRef.current(idx)

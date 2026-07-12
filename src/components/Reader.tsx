@@ -404,7 +404,14 @@ export function Reader({
   useEffect(() => {
     if (player.status === 'ready' || player.status === 'idle' || player.status === 'finished') {
       // Defer so we don't cascade a render from the status sync effect.
-      queueMicrotask(() => setTeleprompterDismissed(false))
+      let cancelled = false
+      queueMicrotask(() => {
+        if (cancelled) return
+        setTeleprompterDismissed(false)
+      })
+      return () => {
+        cancelled = true
+      }
     }
   }, [player.status])
 

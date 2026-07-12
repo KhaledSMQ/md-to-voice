@@ -71,7 +71,8 @@ export function ReaderChrome({
 
   useEffect(() => {
     if (!headerRenaming) return
-    requestAnimationFrame(() => titleInputRef.current?.focus())
+    const raf = requestAnimationFrame(() => titleInputRef.current?.focus())
+    return () => cancelAnimationFrame(raf)
   }, [headerRenaming])
 
   useEffect(() => {

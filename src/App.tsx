@@ -125,7 +125,7 @@ export default function App() {
       try {
         const initial = await loadInitialDocument(SAMPLE_MD, 'sample.md')
         const list = await listAllDocuments()
-        if (cancelled) return
+        if (cancelled || !mountedRef.current) return
         setDocId(initial.id)
         setTitle(initial.title)
         setMarkdown(initial.markdown)
@@ -140,7 +140,7 @@ export default function App() {
           documents: list,
         })
       } catch (err) {
-        if (cancelled) return
+        if (cancelled || !mountedRef.current) return
         setBoot({
           phase: 'error',
           message: err instanceof Error ? err.message : String(err),
