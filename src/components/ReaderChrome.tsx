@@ -3,8 +3,14 @@ import { BrightnessControl } from './BrightnessControl'
 import { FontSizeControl } from './FontSizeControl'
 import { MeasureWidthControl } from './MeasureWidthControl'
 import { ReadingPresetControl } from './ReadingPresetControl'
+import { ReadingRhythmControl } from './ReadingRhythmControl'
 import { TypographyControl } from './TypographyControl'
 import type { ReadingPresetId } from '../lib/readingPresets'
+import type {
+  ReadingLeadingId,
+  ReadingParagraphId,
+  ReadingTrackingId,
+} from '../lib/readingRhythm'
 import type { ReadingTypographyId } from '../lib/readingTypography'
 
 type Props = {
@@ -21,6 +27,12 @@ type Props = {
   onReadingBrightnessChange: (brightness: number) => void
   measureWidth: number
   onMeasureWidthChange: (ch: number) => void
+  readingLeading: ReadingLeadingId
+  onReadingLeadingChange: (id: ReadingLeadingId) => void
+  readingTracking: ReadingTrackingId
+  onReadingTrackingChange: (id: ReadingTrackingId) => void
+  readingParagraph: ReadingParagraphId
+  onReadingParagraphChange: (id: ReadingParagraphId) => void
   onPaste: () => void
   onToggleInlineEdit: () => void
   /** Open a Markdown file from disk. */
@@ -50,6 +62,12 @@ export function ReaderChrome({
   onReadingBrightnessChange,
   measureWidth,
   onMeasureWidthChange,
+  readingLeading,
+  onReadingLeadingChange,
+  readingTracking,
+  onReadingTrackingChange,
+  readingParagraph,
+  onReadingParagraphChange,
   onPaste,
   onToggleInlineEdit,
   onOpenFile,
@@ -194,13 +212,21 @@ export function ReaderChrome({
                 <FontSizeControl fontSize={fontSize} onChange={onFontSizeChange} compact />
               </div>
               <MeasureWidthControl value={measureWidth} onChange={onMeasureWidthChange} />
+              <TypographyControl value={readingTypography} onChange={onReadingTypographyChange} />
+              <ReadingRhythmControl
+                leading={readingLeading}
+                onLeadingChange={onReadingLeadingChange}
+                tracking={readingTracking}
+                onTrackingChange={onReadingTrackingChange}
+                paragraph={readingParagraph}
+                onParagraphChange={onReadingParagraphChange}
+              />
               <ReadingPresetControl value={readingPreset} onChange={onReadingPresetChange} />
               <BrightnessControl
                 value={readingBrightness}
                 onChange={onReadingBrightnessChange}
                 readingPreset={readingPreset}
               />
-              <TypographyControl value={readingTypography} onChange={onReadingTypographyChange} />
               <div className="my-1 border-t border-white/5" />
               <MenuItem
                 onClick={() => {

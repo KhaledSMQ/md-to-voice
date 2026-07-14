@@ -9,6 +9,10 @@ type Props = {
   /** Compact = carousel side slides; default = selected size. */
   size?: 'md' | 'lg'
   selected?: boolean
+  /** One-shot settle when the catalog loads or this voice becomes selected. */
+  justArrived?: boolean
+  /** Pulse while TTS is synthesizing a chunk for this voice. */
+  synthesizing?: boolean
   language?: string
 }
 
@@ -20,6 +24,8 @@ export function VoiceAvatar({
   label,
   size = 'lg',
   selected = false,
+  justArrived = false,
+  synthesizing = false,
   language,
 }: Props) {
   const dim = size === 'lg' ? 'h-14 w-14' : 'h-11 w-11'
@@ -29,17 +35,20 @@ export function VoiceAvatar({
     <span
       className={`voice-avatar relative inline-flex shrink-0 items-center justify-center rounded-full ${dim} ${
         selected ? 'voice-avatar-selected' : ''
-      }`}
+      }${justArrived ? ' voice-avatar-arrive' : ''}${synthesizing ? ' voice-avatar-synth' : ''}`}
       title={label}
       style={{
         background: `linear-gradient(145deg, ${from} 0%, ${to} 100%)`,
         boxShadow: selected
           ? `0 0 0 2px rgba(15,23,42,0.9), 0 0 0 4px ${accent}, 0 8px 24px rgba(0,0,0,0.35)`
           : `0 4px 14px rgba(0,0,0,0.28)`,
+        ['--voice-accent' as string]: accent,
       }}
       aria-hidden
     >
-      <span className="text-white drop-shadow-sm">
+      {justArrived ? <span className="voice-avatar-ring" /> : null}
+      {synthesizing ? <span className="voice-avatar-synth-ring" /> : null}
+      <span className="relative z-[1] text-white drop-shadow-sm">
         <VoiceIcon kind={icon} />
       </span>
       {badge && (

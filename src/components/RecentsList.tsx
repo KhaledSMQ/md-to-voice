@@ -200,7 +200,7 @@ export function RecentsList({
               <label htmlFor="recents-search" className="sr-only">
                 Search library
               </label>
-              <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-ink-500">
+              <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-500">
                 <IconSearch className="h-3 w-3" />
               </span>
               <input
@@ -210,7 +210,7 @@ export function RecentsList({
                 onChange={(e) => setRecentsSearch(e.target.value)}
                 autoComplete="off"
                 placeholder="Search…"
-                className="w-full rounded-md border border-white/[0.07] bg-ink-950/30 py-1 pl-7 pr-2 text-[11px] text-ink-100 placeholder-ink-500 focus:outline-none focus:ring-2 focus:ring-amber-300/30"
+                className="library-search w-full rounded-lg border border-white/[0.08] bg-ink-950/40 py-1.5 pl-8 pr-2.5 text-[11px] text-ink-100 placeholder-ink-500 transition-[border-color,box-shadow,background-color] focus:border-amber-300/35 focus:bg-ink-950/55 focus:outline-none focus:ring-2 focus:ring-amber-300/20"
               />
             </div>
             <div className="relative shrink-0" ref={sortMenuWrapRef}>
@@ -226,7 +226,7 @@ export function RecentsList({
                 title={`Sort: ${recentsSortButtonLabel(recentsSort)}`}
                 aria-label={`Change sort. Current: ${recentsSortButtonLabel(recentsSort)}.`}
                 onClick={() => setSortMenuOpen((o) => !o)}
-                className="grid h-7 w-7 place-items-center rounded-md border border-white/[0.07] bg-ink-950/30 text-ink-400 transition hover:border-white/15 hover:bg-white/[0.05] hover:text-ink-100 focus:outline-none focus:ring-2 focus:ring-amber-300/30 aria-expanded:bg-white/[0.04]"
+                className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.08] bg-ink-950/40 text-ink-400 transition hover:border-white/15 hover:bg-white/[0.05] hover:text-ink-100 focus:outline-none focus:ring-2 focus:ring-amber-300/20 aria-expanded:border-amber-300/30 aria-expanded:bg-amber-300/[0.08] aria-expanded:text-amber-100"
               >
                 <IconSortAction
                   className={'h-3 w-3 ' + (sortMenuOpen ? 'text-amber-200/90' : '')}
@@ -298,7 +298,7 @@ export function RecentsList({
           </div>
         ) : (
           <ul
-            className="studio-shelf-list max-h-[min(40vh,16rem)] space-y-0.5 overflow-y-auto"
+            className="studio-shelf-list library-list max-h-[min(40vh,16rem)] space-y-1 overflow-y-auto overscroll-contain pr-0.5"
             aria-label="Document history"
           >
             {recentsVisible.map((d) => {
@@ -321,37 +321,37 @@ export function RecentsList({
                 <li key={d.id} className="group">
                   <div
                     className={
-                      'flex items-stretch gap-0.5 overflow-hidden rounded-lg transition ' +
+                      'library-item flex items-stretch gap-0.5 rounded-lg transition-colors ' +
                       (isActive
-                        ? 'bg-amber-300/10 ring-1 ring-amber-300/25'
+                        ? 'is-active bg-amber-300/[0.09] ring-1 ring-inset ring-amber-300/30'
                         : 'hover:bg-white/[0.04]')
                     }
                   >
                     <button
                       type="button"
                       onClick={() => onSelectDocument(d.id)}
-                      className="min-w-0 flex-1 text-left pl-2 pr-1 py-1.5"
+                      className="min-w-0 flex-1 rounded-lg py-1.5 pl-2.5 pr-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-300/40"
                       title={d.title}
                     >
                       <div
                         className={
-                          'truncate font-mono text-[11px] ' +
+                          'truncate font-mono text-[11px] leading-snug ' +
                           (isActive ? 'text-amber-100' : 'text-ink-100')
                         }
                       >
                         {displayTitle}
                       </div>
-                      <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[9px] text-ink-500">
-                        <span className="inline-flex items-center gap-0.5">
-                          <IconClock className="h-2.5 w-2.5 opacity-80" />
-                          {when}
+                      <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[9px] leading-tight text-ink-500">
+                        <span className="inline-flex min-w-0 items-center gap-0.5 truncate">
+                          <IconClock className="h-2.5 w-2.5 shrink-0 opacity-80" />
+                          <span className="truncate">{when}</span>
                         </span>
                         {resumeLabel && (
                           <>
                             <span className="text-ink-600" aria-hidden>
                               ·
                             </span>
-                            <span className="text-amber-200/80 tabular-nums">{resumeLabel}</span>
+                            <span className="shrink-0 text-amber-200/80 tabular-nums">{resumeLabel}</span>
                           </>
                         )}
                       </div>
@@ -377,7 +377,7 @@ export function RecentsList({
                         setPendingDelete({ id: d.id, title: d.id === activeId ? title : d.title })
                       }}
                       title="Remove from this device"
-                      className="shrink-0 self-stretch px-1.5 text-ink-500 transition hover:bg-red-500/10 hover:text-red-200 focus:opacity-100 focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-300/50 sm:opacity-0 sm:group-hover:opacity-100"
+                      className="shrink-0 self-stretch rounded-r-lg px-1.5 text-ink-500 transition hover:bg-red-500/10 hover:text-red-200 focus:opacity-100 focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-amber-300/50 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
                       aria-label={`Remove ${d.title} from this device`}
                     >
                       <IconTrash className="mx-0.5 h-3 w-3" />

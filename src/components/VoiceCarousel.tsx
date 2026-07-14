@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import useEmblaCarousel from 'embla-carousel-react'
 import type { EmblaCarouselType, EmblaEventType } from 'embla-carousel'
 import type { VoiceInfo } from '../lib/tts/types'
@@ -9,17 +9,31 @@ type Props = {
   voices: VoiceInfo[]
   voice: string
   onVoice: (voice: string) => void
+  /** True while TTS is generating the next chunk for this voice. */
+  buffering?: boolean
+  /** Increments when a chunk finishes generating — triggers the ready flash. */
+  chunkReadyTick?: number
 }
 
 const TWEEN_FACTOR_BASE = 0.58
+/** How long the one-shot “voice loaded / selected” burst runs. */
+/** Match CSS: pop 0.6s + ring 0.7s settle. */
+const VOICE_ARRIVE_MS = 700
 
 function numberWithinRange(n: number, min: number, max: number): number {
   return Math.min(Math.max(n, min), max)
 }
 
-export const VoiceCarousel = memo(function VoiceCarousel({ voices, voice, onVoice }: Props) {
+export const VoiceCarousel = memo(function VoiceCarousel({
+  voices,
+  voice,
+  onVoice,
+  buffering = false,
+  chunkReadyTick = 0,
+}: Props) {
+  const catalogReady = voices.length > 0
   const slides = useMemo(() => {
-    if (voices.length > 0) return voices
+    if (catalogReady) return voices
     return [
       {
         id: voice,
@@ -28,7 +42,7 @@ export const VoiceCarousel = memo(function VoiceCarousel({ voices, voice, onVoic
         gender: '',
       } satisfies VoiceInfo,
     ]
-  }, [voices, voice])
+  }, [catalogReady, voices, voice])
 
   const [emblaRef, emblaApi] = useEmblaCarousel({
     loop: slides.length > 2,
@@ -43,6 +57,55 @@ export const VoiceCarousel = memo(function VoiceCarousel({ voices, voice, onVoic
   const onVoiceRef = useRef(onVoice)
   onVoiceRef.current = onVoice
   const syncingRef = useRef(false)
+  const prevCatalogReady = useRef(catalogReady)
+  const prevVoiceRef = useRef(voice)
+  const arriveTimerRef = useRef(0)
+  const [arriveBurst, setArriveBurst] = useState(false)
+  const [catalogReveal, setCatalogReveal] = useState(false)
+
+  const fireArriveBurst = useCallback(() => {
+    setArriveBurst(true)
+    if (arriveTimerRef.current) window.clearTimeout(arriveTimerRef.current)
+    arriveTimerRef.current = window.setTimeout(() => {
+      arriveTimerRef.current = 0
+      setArriveBurst(false)
+    }, VOICE_ARRIVE_MS)
+  }, [])
+
+  // Catalog just loaded from the worker — reveal carousel + celebrate selected voice.
+  useEffect(() => {
+    if (catalogReady && !prevCatalogReady.current) {
+      setCatalogReveal(true)
+      fireArriveBurst()
+      const t = window.setTimeout(() => setCatalogReveal(false), 900)
+      prevCatalogReady.current = catalogReady
+      return () => clearTimeout(t)
+    }
+    prevCatalogReady.current = catalogReady
+  }, [catalogReady, fireArriveBurst])
+
+  // Voice changed (carousel or settings) — one-shot settle on the new avatar.
+  useEffect(() => {
+    if (prevVoiceRef.current === voice) return
+    prevVoiceRef.current = voice
+    if (!catalogReady) return
+    fireArriveBurst()
+  }, [voice, catalogReady, fireArriveBurst])
+
+  // TTS chunk finished generating — visible “voice ready” flash on the selected avatar.
+  const prevChunkReadyTick = useRef(chunkReadyTick)
+  useEffect(() => {
+    if (chunkReadyTick === prevChunkReadyTick.current) return
+    prevChunkReadyTick.current = chunkReadyTick
+    if (chunkReadyTick <= 0) return
+    fireArriveBurst()
+  }, [chunkReadyTick, fireArriveBurst])
+
+  useEffect(() => {
+    return () => {
+      if (arriveTimerRef.current) window.clearTimeout(arriveTimerRef.current)
+    }
+  }, [])
 
   const setTweenNodes = useCallback((api: EmblaCarouselType) => {
     tweenNodes.current = api.slideNodes().map((slideNode) => {
@@ -89,12 +152,15 @@ export const VoiceCarousel = memo(function VoiceCarousel({ voices, voice, onVoic
     })
   }, [])
 
-  const onSelect = useCallback((api: EmblaCarouselType) => {
-    if (syncingRef.current) return
-    const idx = api.selectedScrollSnap()
-    const next = slides[idx]
-    if (next && next.id !== voice) onVoiceRef.current(next.id)
-  }, [slides, voice])
+  const onSelect = useCallback(
+    (api: EmblaCarouselType) => {
+      if (syncingRef.current) return
+      const idx = api.selectedScrollSnap()
+      const next = slides[idx]
+      if (next && next.id !== voice) onVoiceRef.current(next.id)
+    },
+    [slides, voice],
+  )
 
   useEffect(() => {
     if (!emblaApi) return
@@ -146,7 +212,12 @@ export const VoiceCarousel = memo(function VoiceCarousel({ voices, voice, onVoic
   const scrollNext = () => emblaApi?.scrollNext()
 
   return (
-    <div className="voice-carousel" role="group" aria-label="Voice">
+    <div
+      className={`voice-carousel${catalogReveal ? ' is-catalog-ready' : ''}${catalogReady ? ' has-catalog' : ''}${buffering ? ' is-buffering' : ''}`}
+      role="group"
+      aria-label="Voice"
+      aria-busy={buffering || undefined}
+    >
       <div className="mb-1.5 flex items-center justify-between gap-2 px-0.5">
         <span className="text-[10px] font-medium uppercase tracking-wider text-ink-500">Voice</span>
         {selected && (
@@ -171,11 +242,19 @@ export const VoiceCarousel = memo(function VoiceCarousel({ voices, voice, onVoic
 
         <div className="voice-carousel-viewport" ref={emblaRef}>
           <div className="voice-carousel-container">
-            {slides.map((v) => {
+            {slides.map((v, i) => {
               const meta = getVoiceAvatarMeta(v.id, v.name)
               const isSelected = v.id === voice
               return (
-                <div className="voice-carousel-slide" key={v.id}>
+                <div
+                  className="voice-carousel-slide"
+                  key={v.id}
+                  style={
+                    catalogReveal
+                      ? { ['--voice-stagger' as string]: `${Math.min(i, 8) * 45}ms` }
+                      : undefined
+                  }
+                >
                   <button
                     type="button"
                     className="voice-carousel-scale"
@@ -194,6 +273,8 @@ export const VoiceCarousel = memo(function VoiceCarousel({ voices, voice, onVoic
                       accent={meta.accent}
                       label={meta.label}
                       selected={isSelected}
+                      justArrived={isSelected && arriveBurst}
+                      synthesizing={isSelected && buffering}
                       language={v.language}
                     />
                     <span className="voice-carousel-name">{meta.label}</span>

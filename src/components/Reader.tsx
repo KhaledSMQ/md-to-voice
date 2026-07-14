@@ -33,6 +33,14 @@ import {
 } from '../lib/readingPresets'
 import { readingBrightnessCssVars } from '../lib/readingBrightness'
 import {
+  resolveReadingLeading,
+  resolveReadingParagraph,
+  resolveReadingTracking,
+  type ReadingLeadingId,
+  type ReadingParagraphId,
+  type ReadingTrackingId,
+} from '../lib/readingRhythm'
+import {
   readingTypographyMeta,
   type ReadingTypographyId,
 } from '../lib/readingTypography'
@@ -81,6 +89,12 @@ type Props = {
   onReadingBrightnessChange: (brightness: number) => void
   measureWidth: number
   onMeasureWidthChange: (ch: number) => void
+  readingLeading: ReadingLeadingId
+  onReadingLeadingChange: (id: ReadingLeadingId) => void
+  readingTracking: ReadingTrackingId
+  onReadingTrackingChange: (id: ReadingTrackingId) => void
+  readingParagraph: ReadingParagraphId
+  onReadingParagraphChange: (id: ReadingParagraphId) => void
   controlsWidth: number
   onControlsWidthChange: (width: number) => void
 }
@@ -119,6 +133,12 @@ export function Reader({
   onReadingBrightnessChange,
   measureWidth,
   onMeasureWidthChange,
+  readingLeading,
+  onReadingLeadingChange,
+  readingTracking,
+  onReadingTrackingChange,
+  readingParagraph,
+  onReadingParagraphChange,
   controlsWidth,
   onControlsWidthChange,
 }: Props) {
@@ -134,10 +154,20 @@ export function Reader({
       ({
         ...readingBrightnessCssVars(readingPreset, readingBrightness),
         ['--reader-font' as string]: face.stack,
-        ['--reader-leading' as string]: face.leading,
-        ['--reader-tracking' as string]: face.tracking,
+        ['--reader-leading' as string]: resolveReadingLeading(readingLeading, face.leading),
+        ['--reader-tracking' as string]: resolveReadingTracking(readingTracking, face.tracking),
+        ['--reader-paragraph-gap' as string]: resolveReadingParagraph(readingParagraph),
       }) as CSSProperties,
-    [readingPreset, readingBrightness, face.stack, face.leading, face.tracking],
+    [
+      readingPreset,
+      readingBrightness,
+      face.stack,
+      face.leading,
+      face.tracking,
+      readingLeading,
+      readingTracking,
+      readingParagraph,
+    ],
   )
   const previewFrameRef = useRef<HTMLDivElement>(null)
   const inlineEditorRef = useRef<HTMLTextAreaElement>(null)
@@ -1121,6 +1151,12 @@ export function Reader({
         onReadingBrightnessChange={onReadingBrightnessChange}
         measureWidth={measureWidth}
         onMeasureWidthChange={onMeasureWidthChange}
+        readingLeading={readingLeading}
+        onReadingLeadingChange={onReadingLeadingChange}
+        readingTracking={readingTracking}
+        onReadingTrackingChange={onReadingTrackingChange}
+        readingParagraph={readingParagraph}
+        onReadingParagraphChange={onReadingParagraphChange}
         onPaste={() => void handlePasteClick()}
         onOpenFile={openFilePicker}
         onToggleInlineEdit={() => {
@@ -1175,6 +1211,8 @@ export function Reader({
             setTeleprompterMode(enabled)
             if (enabled) setTeleprompterDismissed(false)
           }}
+          buffering={player.buffering}
+          chunkReadyTick={player.chunkReadyTick}
         />
 
         <div
@@ -1275,7 +1313,7 @@ export function Reader({
         ) : (
           <div
             className={
-              'relative flex min-h-0 min-w-0 flex-1 overflow-hidden' +
+              'relative flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-[inherit]' +
               (showResumeNudge && resumeNudge ? ' pt-[4.5rem]' : '')
             }
           >

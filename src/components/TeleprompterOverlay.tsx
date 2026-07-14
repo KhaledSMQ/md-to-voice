@@ -1,4 +1,12 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import type { WordToken } from '../lib/tokenize'
 import { useActiveWordIdx, type ActiveWordStore } from '../lib/usePlayer'
 
@@ -71,6 +79,17 @@ export function TeleprompterOverlay({
   const [browsing, setBrowsing] = useState(false)
   const [hoveredLineIdx, setHoveredLineIdx] = useState<number | null>(null)
   const reducedMotion = usePrefersReducedMotion()
+
+  const setLineRef = useCallback((lineIdx: number, node: HTMLParagraphElement | null) => {
+    lineRefs.current[lineIdx] = node
+  }, [])
+
+  const handleLineHover = useCallback((lineIdx: number, hovered: boolean) => {
+    setHoveredLineIdx((cur) => {
+      if (hovered) return lineIdx
+      return cur === lineIdx ? null : cur
+    })
+  }, [])
 
   const lines = useMemo(() => groupIntoLines(words), [words])
   const maxOrdinal = Math.max(0, words.length - 1)
@@ -197,8 +216,7 @@ export function TeleprompterOverlay({
     return i != null ? i : 0
   }, [lines.length, previewWordIdx, lineIdxByWordIdx])
 
-  useLayoutEffect(() => {
-    if (browsing) return
+ 
 
     const scroller = scrollerRef.current
     const el = lineRefs.current[activeLineIdx]
@@ -334,50 +352,24 @@ export function TeleprompterOverlay({
       >
         <div className="mx-auto flex max-w-3xl flex-col gap-7 sm:gap-9">
           {lines.map((line, lineIdx) => {
-            const dist = Math.min(3, Math.abs(lineIdx - activeLineIdx))
             const isActiveLine = lineIdx === activeLineIdx
-            const ahead = lineIdx > activeLineIdx
-            const isHovered = hoveredLineIdx === lineIdx
             return (
-              <p
+              <TeleprompterLine
                 key={lineIdx}
-                ref={(node) => {
-                  lineRefs.current[lineIdx] = node
-                }}
-                data-dist={dist}
-                data-ahead={ahead ? '1' : '0'}
-                onPointerEnter={() => setHoveredLineIdx(lineIdx)}
-                onPointerLeave={() =>
-                  setHoveredLineIdx((cur) => (cur === lineIdx ? null : cur))
-                }
-                className={`teleprompter-line text-left font-semibold leading-[1.4] tracking-tight ${
-                  isActiveLine ? 'teleprompter-line-active' : ''
-                } ${isHovered ? 'is-hovered' : ''} ${
-                  reducedMotion ? 'teleprompter-line-static' : ''
-                }`}
-              >
-                {line.words.map((w, wi) => {
-                  const isActive = w.idx === previewWordIdx
-                  const isSpoken = previewWordIdx >= 0 && w.idx < previewWordIdx
-                  return (
-                    <button
-                      key={w.idx}
-                      type="button"
-                      onClick={() => onWordClick(w.idx)}
-                      className={`teleprompter-word inline rounded-[0.2em] px-[0.06em] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/60 ${
-                        isActive
-                          ? 'is-active'
-                          : isSpoken && isActiveLine
-                            ? 'is-spoken'
-                            : ''
-                      }`}
-                    >
-                      {w.text}
-                      {wi < line.words.length - 1 && !w.text.endsWith('-') ? ' ' : ''}
-                    </button>
-                  )
-                })}
-              </p>
+                line={line}
+                lineIdx={lineIdx}
+                dist={Math.min(3, Math.abs(lineIdx - activeLineIdx))}
+                isActiveLine={isActiveLine}
+                ahead={lineIdx > activeLineIdx}
+                isHovered={hoveredLineIdx === lineIdx}
+                // Word highlights only matter on the active line — inactive
+                // lines keep previewWordIdx=-1 so per-word ticks don't re-render them.
+                previewWordIdx={isActiveLine ? previewWordIdx : -1}
+                reducedMotion={reducedMotion}
+                onWordClick={onWordClick}
+                onHover={handleLineHover}
+                setLineRef={setLineRef}
+              />
             )
           })}
         </div>
@@ -551,6 +543,66 @@ export function TeleprompterOverlay({
     </div>
   )
 }
+
+type TeleprompterLineProps = {
+  line: Line
+  lineIdx: number
+  dist: number
+  isActiveLine: boolean
+  ahead: boolean
+  isHovered: boolean
+  /** Active/spoken highlighting; pass -1 for inactive lines so word ticks skip them. */
+  previewWordIdx: number
+  reducedMotion: boolean
+  onWordClick: (wIdx: number) => void
+  onHover: (lineIdx: number, hovered: boolean) => void
+  setLineRef: (lineIdx: number, node: HTMLParagraphElement | null) => void
+}
+
+const TeleprompterLine = memo(function TeleprompterLine({
+  line,
+  lineIdx,
+  dist,
+  isActiveLine,
+  ahead,
+  isHovered,
+  previewWordIdx,
+  reducedMotion,
+  onWordClick,
+  onHover,
+  setLineRef,
+}: TeleprompterLineProps) {
+  return (
+    <p
+      ref={(node) => setLineRef(lineIdx, node)}
+      data-dist={dist}
+      data-ahead={ahead ? '1' : '0'}
+      onPointerEnter={() => onHover(lineIdx, true)}
+      onPointerLeave={() => onHover(lineIdx, false)}
+      className={`teleprompter-line text-left font-semibold leading-[1.4] tracking-tight ${
+        isActiveLine ? 'teleprompter-line-active' : ''
+      } ${isHovered ? 'is-hovered' : ''} ${reducedMotion ? 'teleprompter-line-static' : ''}`}
+    >
+      {line.words.map((w, wi) => {
+        const isActive = w.idx === previewWordIdx
+        const isSpoken = previewWordIdx >= 0 && w.idx < previewWordIdx
+        return (
+          <button
+            key={w.idx}
+            type="button"
+            onClick={() => onWordClick(w.idx)}
+            className={`teleprompter-word inline rounded-[0.2em] px-[0.06em] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/60 ${
+              isActive ? 'is-active' : isSpoken && isActiveLine ? 'is-spoken' : ''
+            }`}
+          >
+            {w.text}
+            {wi < line.words.length - 1 && !w.text.endsWith('-') ? ' ' : ''}
+          </button>
+        )
+      })}
+    </p>
+  )
+})
 
 function groupIntoLines(words: WordToken[]): Line[] {
   if (words.length === 0) return []

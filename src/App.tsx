@@ -61,6 +61,9 @@ export default function App() {
   const [readingTypography, setReadingTypography] = useState(() => loadAppSettings().readingTypography)
   const [readingBrightness, setReadingBrightness] = useState(() => loadAppSettings().readingBrightness)
   const [measureWidth, setMeasureWidth] = useState(() => loadAppSettings().measureWidth)
+  const [readingLeading, setReadingLeading] = useState(() => loadAppSettings().readingLeading)
+  const [readingTracking, setReadingTracking] = useState(() => loadAppSettings().readingTracking)
+  const [readingParagraph, setReadingParagraph] = useState(() => loadAppSettings().readingParagraph)
   const [storageBanner, setStorageBanner] = useState<string | null>(null)
   const [readingFocus, setReadingFocus] = useState(false)
   const [dropError, setDropError] = useState<string | null>(null)
@@ -191,11 +194,24 @@ export default function App() {
           readingTypography,
           readingBrightness,
           measureWidth,
+          readingLeading,
+          readingTracking,
+          readingParagraph,
         }),
       LAYOUT_SAVE_MS,
     )
     return () => clearTimeout(t)
-  }, [controlsWidth, fontSize, readingPreset, readingTypography, readingBrightness, measureWidth])
+  }, [
+    controlsWidth,
+    fontSize,
+    readingPreset,
+    readingTypography,
+    readingBrightness,
+    measureWidth,
+    readingLeading,
+    readingTracking,
+    readingParagraph,
+  ])
 
   const applyDocument = useCallback((d: StoredDocument) => {
     setDocId(d.id)
@@ -443,6 +459,12 @@ export default function App() {
           onReadingBrightnessChange={setReadingBrightness}
           measureWidth={measureWidth}
           onMeasureWidthChange={setMeasureWidth}
+          readingLeading={readingLeading}
+          onReadingLeadingChange={setReadingLeading}
+          readingTracking={readingTracking}
+          onReadingTrackingChange={setReadingTracking}
+          readingParagraph={readingParagraph}
+          onReadingParagraphChange={setReadingParagraph}
           controlsWidth={controlsWidth}
           onControlsWidthChange={setControlsWidth}
         />

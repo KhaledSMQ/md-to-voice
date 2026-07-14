@@ -1,4 +1,3 @@
-import { prepareWithSegments } from '@chenglou/pretext'
 import { SKIP, visit } from 'unist-util-visit'
 import type { Handler } from 'mdast-util-to-hast'
 import type { Element as HastElement, ElementContent, Text as HastText } from 'hast'
@@ -55,27 +54,35 @@ const BLOCK_PARENTS = new Set([
   'blockquote',
 ])
 
-const FONT = '16px Inter, system-ui, sans-serif'
-
-function isWordKind(kind: string): boolean {
-  return kind === 'text' || kind === 'soft-hyphen'
-}
+const wordSegmenter =
+  typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function'
+    ? new Intl.Segmenter(undefined, { granularity: 'word' })
+    : null
 
 function segmentText(text: string): Array<{ kind: 'word' | 'space'; text: string }> {
   if (!text) return []
-  try {
-    const prepared = prepareWithSegments(text, FONT, { whiteSpace: 'pre-wrap' })
-    const out: Array<{ kind: 'word' | 'space'; text: string }> = []
-    for (let i = 0; i < prepared.segments.length; i++) {
-      const seg = prepared.segments[i]
-      const kind = prepared.kinds[i]
-      if (!seg) continue
-      out.push({ kind: isWordKind(kind) ? 'word' : 'space', text: seg })
+  if (!wordSegmenter) return fallbackSegment(text)
+  const out: Array<{ kind: 'word' | 'space'; text: string }> = []
+  for (const { segment, isWordLike } of wordSegmenter.segment(text)) {
+    if (!segment) continue
+    if (isWordLike) {
+      out.push({ kind: 'word', text: segment })
+      continue
     }
-    return out
-  } catch {
-    return fallbackSegment(text)
+    // Whitespace stays as space; punctuation/symbols attach to the previous word
+    // so "three." stays one token (matches TTS + sentence-terminator detection).
+    if (/^\s+$/.test(segment)) {
+      out.push({ kind: 'space', text: segment })
+      continue
+    }
+    const prev = out[out.length - 1]
+    if (prev && prev.kind === 'word') {
+      prev.text += segment
+    } else {
+      out.push({ kind: 'word', text: segment })
+    }
   }
+  return out
 }
 
 function fallbackSegment(text: string): Array<{ kind: 'word' | 'space'; text: string }> {

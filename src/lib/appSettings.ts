@@ -12,6 +12,17 @@ import {
   type ReadingPresetId,
 } from './readingPresets'
 import {
+  DEFAULT_READING_LEADING,
+  DEFAULT_READING_PARAGRAPH,
+  DEFAULT_READING_TRACKING,
+  isReadingLeadingId,
+  isReadingParagraphId,
+  isReadingTrackingId,
+  type ReadingLeadingId,
+  type ReadingParagraphId,
+  type ReadingTrackingId,
+} from './readingRhythm'
+import {
   DEFAULT_READING_TYPOGRAPHY,
   isReadingTypographyId,
   type ReadingTypographyId,
@@ -37,6 +48,12 @@ export const DEFAULT_APP_SETTINGS = {
   readingBrightness: BRIGHTNESS_DEFAULT,
   /** Reading column width in `ch` (100 = fill panel). */
   measureWidth: MEASURE_WIDTH_DEFAULT,
+  /** Line height preset (auto = face default). */
+  readingLeading: DEFAULT_READING_LEADING as ReadingLeadingId,
+  /** Letter-spacing preset (auto = face default). */
+  readingTracking: DEFAULT_READING_TRACKING as ReadingTrackingId,
+  /** Paragraph gap preset. */
+  readingParagraph: DEFAULT_READING_PARAGRAPH as ReadingParagraphId,
 } as const
 
 export const VOLUME_MIN = 0
@@ -74,6 +91,9 @@ export type AppSettings = {
   readingTypography: ReadingTypographyId
   readingBrightness: number
   measureWidth: number
+  readingLeading: ReadingLeadingId
+  readingTracking: ReadingTrackingId
+  readingParagraph: ReadingParagraphId
 }
 
 function clampVolume(n: number): number {
@@ -106,7 +126,9 @@ export function loadAppSettings(): AppSettings {
     const vol = typeof p.volume === 'number' ? p.volume : DEFAULT_APP_SETTINGS.volume
     const sortRaw = p.recentsSort
     const recentsSort =
-      sortRaw === 'played' || sortRaw === 'added' || sortRaw === 'name' ? sortRaw : DEFAULT_APP_SETTINGS.recentsSort
+      sortRaw === 'played' || sortRaw === 'added' || sortRaw === 'name'
+        ? sortRaw
+        : DEFAULT_APP_SETTINGS.recentsSort
     const fontSize =
       typeof p.fontSize === 'number' ? clampFontSize(p.fontSize) : DEFAULT_APP_SETTINGS.fontSize
     const sidebarWidth =
@@ -134,6 +156,15 @@ export function loadAppSettings(): AppSettings {
       typeof p.measureWidth === 'number'
         ? clampMeasureWidth(p.measureWidth)
         : DEFAULT_APP_SETTINGS.measureWidth
+    const readingLeading = isReadingLeadingId(p.readingLeading)
+      ? p.readingLeading
+      : DEFAULT_APP_SETTINGS.readingLeading
+    const readingTracking = isReadingTrackingId(p.readingTracking)
+      ? p.readingTracking
+      : DEFAULT_APP_SETTINGS.readingTracking
+    const readingParagraph = isReadingParagraphId(p.readingParagraph)
+      ? p.readingParagraph
+      : DEFAULT_APP_SETTINGS.readingParagraph
     return {
       voice: typeof p.voice === 'string' && p.voice.length > 0 ? p.voice : DEFAULT_APP_SETTINGS.voice,
       speed: clampSpeed(sp),
@@ -147,6 +178,9 @@ export function loadAppSettings(): AppSettings {
       readingTypography,
       readingBrightness,
       measureWidth,
+      readingLeading,
+      readingTracking,
+      readingParagraph,
     }
   } catch {
     return { ...DEFAULT_APP_SETTINGS }
@@ -162,19 +196,25 @@ export function saveAppSettings(patch: Partial<AppSettings>): void {
       speed: typeof patch.speed === 'number' ? patch.speed : prev.speed,
       volume: typeof patch.volume === 'number' ? clampVolume(patch.volume) : prev.volume,
       recentsSort:
-        patch.recentsSort === 'played' || patch.recentsSort === 'added' || patch.recentsSort === 'name'
+        patch.recentsSort === 'played' ||
+        patch.recentsSort === 'added' ||
+        patch.recentsSort === 'name'
           ? patch.recentsSort
           : prev.recentsSort,
       fontSize: typeof patch.fontSize === 'number' ? clampFontSize(patch.fontSize) : prev.fontSize,
       sidebarWidth:
-        typeof patch.sidebarWidth === 'number' ? clampSidebarWidth(patch.sidebarWidth) : prev.sidebarWidth,
+        typeof patch.sidebarWidth === 'number'
+          ? clampSidebarWidth(patch.sidebarWidth)
+          : prev.sidebarWidth,
       controlsWidth:
         typeof patch.controlsWidth === 'number'
           ? clampControlsWidth(patch.controlsWidth)
           : prev.controlsWidth,
       teleprompterMode:
         typeof patch.teleprompterMode === 'boolean' ? patch.teleprompterMode : prev.teleprompterMode,
-      readingPreset: isReadingPresetId(patch.readingPreset) ? patch.readingPreset : prev.readingPreset,
+      readingPreset: isReadingPresetId(patch.readingPreset)
+        ? patch.readingPreset
+        : prev.readingPreset,
       readingTypography: isReadingTypographyId(patch.readingTypography)
         ? patch.readingTypography
         : prev.readingTypography,
@@ -182,7 +222,18 @@ export function saveAppSettings(patch: Partial<AppSettings>): void {
         ? clampBrightness(patch.readingBrightness)
         : prev.readingBrightness,
       measureWidth:
-        typeof patch.measureWidth === 'number' ? clampMeasureWidth(patch.measureWidth) : prev.measureWidth,
+        typeof patch.measureWidth === 'number'
+          ? clampMeasureWidth(patch.measureWidth)
+          : prev.measureWidth,
+      readingLeading: isReadingLeadingId(patch.readingLeading)
+        ? patch.readingLeading
+        : prev.readingLeading,
+      readingTracking: isReadingTrackingId(patch.readingTracking)
+        ? patch.readingTracking
+        : prev.readingTracking,
+      readingParagraph: isReadingParagraphId(patch.readingParagraph)
+        ? patch.readingParagraph
+        : prev.readingParagraph,
     }
     next.speed = clampSpeed(next.speed)
     localStorage.setItem(KEY, JSON.stringify(next))

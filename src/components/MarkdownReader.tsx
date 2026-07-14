@@ -1,4 +1,13 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react'
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  type CSSProperties,
+  type ReactNode,
+} from 'react'
 
 export type MarkdownReaderHandle = {
   setActive: (wIdx: number) => void
@@ -109,7 +118,6 @@ function directionTowardPlayhead(
   const d = target - current
   if (d < -1) return 'above'
   if (d > 1) return 'below'
-  // Fallback: vertical position in the viewport
   const c = container.getBoundingClientRect()
   const e = el.getBoundingClientRect()
   if (e.bottom < c.top + margin) return 'above'
@@ -240,9 +248,6 @@ export const MarkdownReader = forwardRef<MarkdownReaderHandle, Props>(function M
     const onClick = (e: MouseEvent) => {
       const cb = onWordClickRef.current
       if (!cb) return
-      // Don't hijack the click if the user just finished a text selection —
-      // browsers fire `click` after a drag-select if the mouse didn't move
-      // much, and we don't want a stray click to wipe the selection.
       const sel = window.getSelection()
       if (sel && !sel.isCollapsed && sel.toString().length > 0) return
       let el = e.target as HTMLElement | null
@@ -285,8 +290,6 @@ export const MarkdownReader = forwardRef<MarkdownReaderHandle, Props>(function M
       container.scrollTop = current + diff * SCROLL_LERP
       scrollRafRef.current = requestAnimationFrame(animateScroll)
     }
-    // Release the programmatic flag on the next microtask so our own
-    // scroll event doesn't get mistaken for a user scroll.
     queueMicrotask(() => {
       programmaticScrollRef.current = false
     })
@@ -358,7 +361,9 @@ export const MarkdownReader = forwardRef<MarkdownReaderHandle, Props>(function M
         if (prev >= 0) {
           wordEls.current.get(prev)?.classList.remove('is-active')
         }
-        wordEls.current.forEach((el) => el.classList.remove('is-spoken', 'is-active'))
+        wordEls.current.forEach((el) => {
+          el.classList.remove('is-spoken', 'is-active')
+        })
         activeRef.current = -1
         if (scrollRafRef.current != null) cancelAnimationFrame(scrollRafRef.current)
         scrollRafRef.current = null

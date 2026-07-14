@@ -34,6 +34,8 @@ type Props = {
   onNextChunk: () => void
   teleprompterMode: boolean
   onTeleprompterMode: (enabled: boolean) => void
+  buffering?: boolean
+  chunkReadyTick?: number
 }
 
 export const Controls = memo(function Controls({
@@ -60,6 +62,8 @@ export const Controls = memo(function Controls({
   onNextChunk,
   teleprompterMode,
   onTeleprompterMode,
+  buffering = false,
+  chunkReadyTick = 0,
 }: Props) {
   const activeWordIdx = useActiveWordIdx(activeWordStore)
   const isLoading = status === 'loading-model'
@@ -113,6 +117,7 @@ export const Controls = memo(function Controls({
         <AudioVisualizer
           analyserRef={analyserRef}
           playerStatus={status}
+          buffering={buffering}
           variant="stage"
         />
         <div className="flex items-center justify-between gap-2 px-0.5">
@@ -230,7 +235,13 @@ export const Controls = memo(function Controls({
 
       {/* Instruments */}
       <section className="studio-instruments" aria-label="Instruments">
-        <VoiceCarousel voices={voices} voice={voice} onVoice={onVoice} />
+        <VoiceCarousel
+          voices={voices}
+          voice={voice}
+          onVoice={onVoice}
+          buffering={buffering}
+          chunkReadyTick={chunkReadyTick}
+        />
 
         <button
           type="button"

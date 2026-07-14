@@ -5,6 +5,8 @@ import type { PlayerStatus } from '../lib/usePlayer'
 type Props = {
   analyserRef: RefObject<AnalyserNode | null>
   playerStatus: PlayerStatus
+  /** Waiting on TTS for the next sentence chunk. */
+  buffering?: boolean
   className?: string
   /** Taller hero stage for the studio console. */
   variant?: 'default' | 'stage'
@@ -91,6 +93,7 @@ function loadingPulse(): number {
 export function AudioVisualizer({
   analyserRef,
   playerStatus,
+  buffering = false,
   className = '',
   variant = 'default',
 }: Props) {
@@ -102,15 +105,33 @@ export function AudioVisualizer({
   /** Reused every frame — avoid allocating ~512 bytes × 60fps while speaking. */
   const freqBufRef = useRef<Uint8Array | null>(null)
   const timeBufRef = useRef<Uint8Array | null>(null)
+  const analyserNodeRef = useRef(analyserRef)
+  analyserNodeRef.current = analyserRef
+  const playingRef = useRef(false)
+  const pausedRef = useRef(false)
+  const bufferingRef = useRef(false)
+  const needsAnimRef = useRef(false)
+  const startLoopRef = useRef<() => void>(() => {})
   const [reducedMotion, setReducedMotion] = useState(false)
 
   const isPlaying = playerStatus === 'playing'
   const isPaused = playerStatus === 'paused'
   const isLoading = playerStatus === 'loading-model'
   const isLive = isPlaying || isPaused
-  const needsAnim = isPlaying || isPaused || isLoading
-  const status = STATUS_META[playerStatus]
+  const needsAnim = isPlaying || isPaused || isLoading || buffering
+  const status = buffering
+    ? {
+        label: 'Synthesizing',
+        dot: 'bg-amber-300 status-pulse',
+        badge: 'border-amber-300/35 bg-amber-300/15 text-amber-100',
+      }
+    : STATUS_META[playerStatus]
   const isStage = variant === 'stage'
+
+  playingRef.current = isPlaying
+  pausedRef.current = isPaused
+  bufferingRef.current = buffering
+  needsAnimRef.current = needsAnim
 
   useEffect(() => {
     const mq = window.matchMedia?.('(prefers-reduced-motion: reduce)')
@@ -121,17 +142,86 @@ export function AudioVisualizer({
     return () => mq.removeEventListener?.('change', apply)
   }, [])
 
+  // Mount the wave once; drive amplitude/speed from status refs so play/pause
+  // does not dispose and recreate SiriWave.
   useEffect(() => {
     if (reducedMotion) {
       waveRef.current?.dispose()
       waveRef.current = null
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
       rafRef.current = null
+      startLoopRef.current = () => {}
       return
     }
 
     const container = containerRef.current
     if (!container) return
+
+    const applyIdle = () => {
+      const wave = waveRef.current
+      if (!wave) return
+      smoothAmpRef.current = 0.08
+      wave.setAmplitude(0.08)
+      wave.setSpeed(0.03)
+    }
+
+    const tick = () => {
+      const wave = waveRef.current
+      if (!wave) {
+        rafRef.current = null
+        return
+      }
+      if (!needsAnimRef.current) {
+        applyIdle()
+        rafRef.current = null
+        return
+      }
+
+      const analyser = analyserNodeRef.current.current
+      let target: number
+
+      if (bufferingRef.current) {
+        target = loadingPulse()
+      } else if (playingRef.current && analyser) {
+        if (!freqBufRef.current || freqBufRef.current.length !== analyser.frequencyBinCount) {
+          freqBufRef.current = new Uint8Array(analyser.frequencyBinCount)
+        }
+        if (!timeBufRef.current || timeBufRef.current.length !== analyser.fftSize) {
+          timeBufRef.current = new Uint8Array(analyser.fftSize)
+        }
+        target = measureAudio(analyser, freqBufRef.current, timeBufRef.current)
+      } else if (pausedRef.current) {
+        target = 0.13
+      } else {
+        target = loadingPulse()
+      }
+
+      const lerp = playingRef.current && !bufferingRef.current ? 0.14 : 0.08
+      smoothAmpRef.current += (target - smoothAmpRef.current) * lerp
+      wave.setAmplitude(smoothAmpRef.current)
+
+      if (bufferingRef.current) {
+        wave.setSpeed(0.12)
+      } else if (playingRef.current && analyser) {
+        wave.setSpeed(0.1 + smoothAmpRef.current * 0.08)
+      } else if (pausedRef.current) {
+        wave.setSpeed(0.05)
+      } else {
+        wave.setSpeed(0.09)
+      }
+
+      rafRef.current = requestAnimationFrame(tick)
+    }
+
+    const startLoop = () => {
+      if (rafRef.current != null) return
+      if (!needsAnimRef.current) {
+        applyIdle()
+        return
+      }
+      rafRef.current = requestAnimationFrame(tick)
+    }
+    startLoopRef.current = startLoop
 
     const mountWave = () => {
       waveRef.current?.dispose()
@@ -149,58 +239,14 @@ export function AudioVisualizer({
     }
 
     mountWave()
-
-    if (!needsAnim) {
-      const wave = waveRef.current
-      if (wave) {
-        smoothAmpRef.current = 0.08
-        wave.setAmplitude(0.08)
-        wave.setSpeed(0.03)
-      }
-    } else {
-      const tick = () => {
-        const wave = waveRef.current
-        if (wave) {
-          const analyser = analyserRef.current
-          let target: number
-
-          if (isPlaying && analyser) {
-            if (
-              !freqBufRef.current ||
-              freqBufRef.current.length !== analyser.frequencyBinCount
-            ) {
-              freqBufRef.current = new Uint8Array(analyser.frequencyBinCount)
-            }
-            if (!timeBufRef.current || timeBufRef.current.length !== analyser.fftSize) {
-              timeBufRef.current = new Uint8Array(analyser.fftSize)
-            }
-            target = measureAudio(analyser, freqBufRef.current, timeBufRef.current)
-          } else if (isPaused) {
-            target = 0.13
-          } else {
-            target = loadingPulse()
-          }
-
-          const lerp = isPlaying ? 0.14 : 0.08
-          smoothAmpRef.current += (target - smoothAmpRef.current) * lerp
-          wave.setAmplitude(smoothAmpRef.current)
-
-          if (isPlaying && analyser) {
-            wave.setSpeed(0.1 + smoothAmpRef.current * 0.08)
-          } else if (isPaused) {
-            wave.setSpeed(0.05)
-          } else {
-            wave.setSpeed(0.09)
-          }
-        }
-        rafRef.current = requestAnimationFrame(tick)
-      }
-      rafRef.current = requestAnimationFrame(tick)
-    }
+    startLoop()
 
     const ro = new ResizeObserver(() => {
       if (resizeTimerRef.current) clearTimeout(resizeTimerRef.current)
-      resizeTimerRef.current = setTimeout(mountWave, 120)
+      resizeTimerRef.current = setTimeout(() => {
+        mountWave()
+        startLoop()
+      }, 120)
     })
     ro.observe(container)
 
@@ -211,15 +257,35 @@ export function AudioVisualizer({
       rafRef.current = null
       waveRef.current?.dispose()
       waveRef.current = null
+      startLoopRef.current = () => {}
     }
-  }, [analyserRef, isPlaying, isPaused, isLoading, needsAnim, reducedMotion])
+  }, [reducedMotion])
+
+  // Start/stop the rAF loop when animation need changes — without remounting the wave.
+  useEffect(() => {
+    if (reducedMotion) return
+    if (!needsAnim) {
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current)
+        rafRef.current = null
+      }
+      const wave = waveRef.current
+      if (wave) {
+        smoothAmpRef.current = 0.08
+        wave.setAmplitude(0.08)
+        wave.setSpeed(0.03)
+      }
+      return
+    }
+    startLoopRef.current()
+  }, [needsAnim, reducedMotion])
 
   return (
     <div
       className={
         `group relative overflow-hidden bg-gradient-to-b from-ink-950 via-[#0a101c] to-ink-900/60 shadow-inner shadow-ink-950/90 ` +
         (isStage
-          ? `studio-stage rounded-2xl border border-white/[0.08] ${isPlaying ? 'is-live' : ''}`
+          ? `studio-stage rounded-2xl border border-white/[0.08] ${isPlaying || buffering ? 'is-live' : ''}${buffering ? ' is-buffering' : ''}`
           : 'rounded-xl border border-white/[0.07]') +
         (className ? ` ${className}` : '')
       }
@@ -235,7 +301,7 @@ export function AudioVisualizer({
         <div
           ref={containerRef}
           className={
-            `w-full transition-opacity duration-500 ${isLive ? 'opacity-100' : 'opacity-70'} ` +
+            `w-full transition-opacity duration-500 ${isLive || buffering ? 'opacity-100' : 'opacity-70'} ` +
             (isStage ? 'h-28' : 'h-20 sm:h-32')
           }
           aria-hidden

@@ -64,6 +64,10 @@ export function usePlayer({
   const [progress, setProgress] = useState<LoadProgress>({})
   const [error, setError] = useState<string | null>(null)
   const [currentChunkIdx, setCurrentChunkIdx] = useState<number>(-1)
+  /** True while waiting on TTS for the chunk about to play. */
+  const [buffering, setBuffering] = useState(false)
+  /** Bumps when a chunk finishes generating — drives the “voice ready” flash. */
+  const [chunkReadyTick, setChunkReadyTick] = useState(0)
 
   const clientRef = useRef<TTSClient | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -89,6 +93,8 @@ export function usePlayer({
   const activeWordListenersRef = useRef(new Set<() => void>())
   const statusRef = useRef(status)
   statusRef.current = status
+  const progressTimerRef = useRef(0)
+  const pendingProgressRef = useRef<LoadProgress | null>(null)
 
   const optionsRef = useRef({
     voice,
@@ -139,6 +145,17 @@ export function usePlayer({
   const safeSetCurrentChunkIdx = useCallback((idx: number): void => {
     if (!mountedRef.current) return
     setCurrentChunkIdx(idx)
+  }, [])
+
+  const safeSetBuffering = useCallback((next: boolean): void => {
+    if (!mountedRef.current) return
+    setBuffering(next)
+  }, [])
+
+  const markChunkReady = useCallback((): void => {
+    if (!mountedRef.current) return
+    setBuffering(false)
+    setChunkReadyTick((n) => n + 1)
   }, [])
 
   const disconnectSource = useCallback((): void => {
@@ -240,8 +257,9 @@ export function usePlayer({
     lastEmittedWordRef.current = -1
     setActiveWord(-1)
     safeSetCurrentChunkIdx(-1)
+    safeSetBuffering(false)
     safeSetStatus((s) => (s === 'idle' || s === 'loading-model' || s === 'error' ? s : 'ready'))
-  }, [releaseAudio, setActiveWord, safeSetCurrentChunkIdx, safeSetStatus])
+  }, [releaseAudio, setActiveWord, safeSetCurrentChunkIdx, safeSetBuffering, safeSetStatus])
 
   // Stable fingerprint so we only reset when the TTS plan or document actually changes.
   const chunksKey = playbackPlanKey(documentId, chunks)
@@ -310,6 +328,11 @@ export function usePlayer({
       mountedRef.current = false
       playRequestedRef.current = false
       playTokenRef.current += 1
+      if (progressTimerRef.current) {
+        window.clearTimeout(progressTimerRef.current)
+        progressTimerRef.current = 0
+      }
+      pendingProgressRef.current = null
       releaseAudio()
       prefetchRef.current.clear()
       clientRef.current?.cancel()
@@ -334,7 +357,16 @@ export function usePlayer({
             ? e.progress / 100
             : e.progress
           : undefined
-      setProgress({ file: e.file, ratio, status: e.status })
+      pendingProgressRef.current = { file: e.file, ratio, status: e.status }
+      // Throttle progress writes — worker fires many events during model load.
+      if (progressTimerRef.current) return
+      progressTimerRef.current = window.setTimeout(() => {
+        progressTimerRef.current = 0
+        if (!mountedRef.current) return
+        const next = pendingProgressRef.current
+        pendingProgressRef.current = null
+        if (next) setProgress(next)
+      }, 100)
     })
     clientRef.current = client
     return client
@@ -428,17 +460,26 @@ export function usePlayer({
       try {
         const p = requestChunk(chunkIdx)
         if (!p) return
+        safeSetBuffering(true)
         result = await p
       } catch (err) {
-        if ((err as Error).message === 'cancelled') return
+        if ((err as Error).message === 'cancelled') {
+          safeSetBuffering(false)
+          return
+        }
         if (playTokenRef.current !== token || !mountedRef.current) return
+        safeSetBuffering(false)
         safeSetError((err as Error).message)
         safeSetStatus('error')
         return
       }
 
-      if (playTokenRef.current !== token || !playRequestedRef.current || !mountedRef.current) return
+      if (playTokenRef.current !== token || !playRequestedRef.current || !mountedRef.current) {
+        safeSetBuffering(false)
+        return
+      }
 
+      markChunkReady()
       prefetchAhead(chunkIdx)
 
       // Fresh <audio> per chunk. Play through the element directly (reliable
@@ -569,6 +610,8 @@ export function usePlayer({
       safeSetStatus,
       safeSetError,
       safeSetCurrentChunkIdx,
+      safeSetBuffering,
+      markChunkReady,
     ],
   )
 
@@ -621,9 +664,10 @@ export function usePlayer({
     lastEmittedWordRef.current = -1
     setActiveWord(-1)
     safeSetCurrentChunkIdx(-1)
+    safeSetBuffering(false)
     safeSetStatus(clientRef.current ? 'ready' : 'idle')
     optionsRef.current.onActiveWord(-1)
-  }, [releaseAudio, setActiveWord, safeSetCurrentChunkIdx, safeSetStatus])
+  }, [releaseAudio, setActiveWord, safeSetCurrentChunkIdx, safeSetBuffering, safeSetStatus])
 
   const seekToWord = useCallback(
     async (wIdx: number): Promise<void> => {
@@ -697,6 +741,8 @@ export function usePlayer({
     progress,
     error,
     currentChunkIdx,
+    buffering,
+    chunkReadyTick,
     /** Snapshot helper for imperative refs (keyboard handlers). Prefer useActiveWordIdx in React trees. */
     getActiveWord,
     subscribeActiveWord,
