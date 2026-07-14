@@ -216,8 +216,7 @@ export function TeleprompterOverlay({
     return i != null ? i : 0
   }, [lines.length, previewWordIdx, lineIdxByWordIdx])
 
- 
-
+  useLayoutEffect(() => {
     const scroller = scrollerRef.current
     const el = lineRefs.current[activeLineIdx]
     if (!scroller || !el) return
