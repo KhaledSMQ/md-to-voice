@@ -104,8 +104,9 @@ async function runGenerate(msg: GenerateMessage): Promise<void> {
       cancelled.delete(msg.reqId)
       return
     }
-    const wav = audio.toWav()
-    const durationSec = audio.audio.length / audio.sampling_rate
+    // transformers v4 RawAudio exposes toBlob() (WAV), not toWav().
+    const wav = await audio.toBlob().arrayBuffer()
+    const durationSec = audio.data.length / audio.sampling_rate
     const ev: GeneratedEvent = {
       type: 'generated',
       reqId: msg.reqId,
