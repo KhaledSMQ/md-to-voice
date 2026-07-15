@@ -38,6 +38,23 @@ type Options = {
 
 const PREFETCH_DEPTH = 2
 
+/** Minimal silent WAV — unlocks HTMLMediaElement during a user gesture on iOS/iPadOS. */
+const SILENT_WAV =
+  'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA='
+
+function isAutoplayBlocked(err: unknown): boolean {
+  if (!(err instanceof Error)) return false
+  const name = (err as Error & { name?: string }).name
+  return (
+    name === 'NotAllowedError' ||
+    /notallowed|user.?gesture|interact|autoplay/i.test(err.message)
+  )
+}
+
+function autoplayBlockedMessage(): string {
+  return 'Playback was blocked on this device. Tap Play again to start audio.'
+}
+
 export type ActiveWordStore = {
   subscribeActiveWord: (onStoreChange: () => void) => () => void
   getActiveWord: () => number
@@ -77,6 +94,8 @@ export function usePlayer({
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null)
   /** captureStream() tracks must be stopped or they keep the element alive. */
   const captureStreamRef = useRef<MediaStream | null>(null)
+  /** Once unlocked during a user gesture, keep the same element for later play(). */
+  const audioUnlockedRef = useRef(false)
   const rafRef = useRef<number | null>(null)
   /** Chunk end backup timer — must be cleared on stop/seek/unmount. */
   const backupTimerRef = useRef<number>(0)
@@ -168,6 +187,66 @@ export function usePlayer({
     }
   }, [])
 
+  /**
+   * One persistent <audio> for the session. iOS/iPadOS only allows later
+   * programmatic play() on an element that was unlocked during a user gesture —
+   * creating a fresh Audio() after model load always fails there.
+   */
+  const ensureAudioElement = useCallback((): HTMLAudioElement => {
+    if (audioRef.current) return audioRef.current
+    const audio = new Audio()
+    audio.preload = 'auto'
+    audio.setAttribute('playsinline', 'true')
+    audio.setAttribute('webkit-playsinline', 'true')
+    ;(audio as HTMLAudioElement & { playsInline: boolean }).playsInline = true
+    audioRef.current = audio
+    return audio
+  }, [])
+
+  /**
+   * Must run in the same turn as the tap/click (before await init / TTS).
+   * Plays a silent clip + resumes AudioContext so Safari keeps permission.
+   */
+  const unlockAudio = useCallback(async (): Promise<void> => {
+    const audio = ensureAudioElement()
+    if (!audioCtxRef.current) {
+      const Ctx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+      if (Ctx) {
+        const ctx = new Ctx()
+        const analyser = ctx.createAnalyser()
+        analyser.fftSize = 256
+        analyser.smoothingTimeConstant = 0.78
+        audioCtxRef.current = ctx
+        analyserRef.current = analyser
+      }
+    }
+    if (audioCtxRef.current?.state === 'suspended') {
+      try {
+        await audioCtxRef.current.resume()
+      } catch {
+        // Ignore — element unlock below is the critical path for speech.
+      }
+    }
+    if (audioUnlockedRef.current) return
+
+    const prevVolume = audio.volume
+    try {
+      audio.volume = 0
+      audio.src = SILENT_WAV
+      await audio.play()
+      audio.pause()
+      audioUnlockedRef.current = true
+    } catch {
+      // Desktop may already allow play; keep going and surface errors on real play.
+    } finally {
+      audio.removeAttribute('src')
+      audio.load()
+      audio.volume = prevVolume
+    }
+  }, [ensureAudioElement])
+
   const clearBackupTimer = useCallback((): void => {
     if (backupTimerRef.current) {
       window.clearTimeout(backupTimerRef.current)
@@ -185,7 +264,11 @@ export function usePlayer({
     async (audio: HTMLAudioElement): Promise<void> => {
       disconnectSource()
       if (!audioCtxRef.current) {
-        const ctx = new AudioContext()
+        const Ctx =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+        if (!Ctx) return
+        const ctx = new Ctx()
         const analyser = ctx.createAnalyser()
         analyser.fftSize = 256
         analyser.smoothingTimeConstant = 0.78
@@ -239,12 +322,12 @@ export function usePlayer({
       a.pause()
       a.removeAttribute('src')
       a.load()
+      // Keep the element — iOS unlock is tied to this instance.
     }
     if (audioUrlRef.current) {
       URL.revokeObjectURL(audioUrlRef.current)
       audioUrlRef.current = null
     }
-    audioRef.current = null
   }, [clearBackupTimer, disconnectSource, stopRaf])
 
   const resetPlayback = useCallback((): void => {
@@ -334,6 +417,8 @@ export function usePlayer({
       }
       pendingProgressRef.current = null
       releaseAudio()
+      audioRef.current = null
+      audioUnlockedRef.current = false
       prefetchRef.current.clear()
       clientRef.current?.cancel()
       void audioCtxRef.current?.close()
@@ -482,32 +567,24 @@ export function usePlayer({
       markChunkReady()
       prefetchAhead(chunkIdx)
 
-      // Fresh <audio> per chunk. Play through the element directly (reliable
-      // `ended`); tap captureStream for the visualiser instead of
-      // createMediaElementSource, which was stalling after sentence breaks.
+      // Reuse the unlocked <audio> element. Fresh Audio() after model load is
+      // blocked on iOS/iPadOS once the original tap gesture has expired.
       disconnectSource()
       stopRaf()
       clearBackupTimer()
-      const prev = audioRef.current
-      if (prev) {
-        prev.onended = null
-        prev.onpause = null
-        prev.onerror = null
-        prev.pause()
-        prev.removeAttribute('src')
-        prev.load()
-      }
+      const audio = ensureAudioElement()
+      audio.onended = null
+      audio.onpause = null
+      audio.onerror = null
+      audio.pause()
       if (audioUrlRef.current) {
         URL.revokeObjectURL(audioUrlRef.current)
         audioUrlRef.current = null
       }
       const url = URL.createObjectURL(result.blob)
       audioUrlRef.current = url
-      const audio = new Audio()
-      audio.preload = 'auto'
       audio.volume = optionsRef.current.volume
       audio.src = url
-      audioRef.current = audio
 
       if (playTokenRef.current !== token || !playRequestedRef.current || !mountedRef.current) {
         releaseAudio()
@@ -593,6 +670,13 @@ export function usePlayer({
       } catch (err) {
         clearBackupTimer()
         if (playTokenRef.current !== token || !mountedRef.current) return
+        if (isAutoplayBlocked(err)) {
+          audioUnlockedRef.current = false
+          playRequestedRef.current = false
+          safeSetError(autoplayBlockedMessage())
+          safeSetStatus('ready')
+          return
+        }
         safeSetError((err as Error).message)
         safeSetStatus('error')
       }
@@ -602,6 +686,7 @@ export function usePlayer({
       prunePrefetchCache,
       prefetchAhead,
       releaseAudio,
+      ensureAudioElement,
       emitActive,
       connectAnalyserTap,
       stopRaf,
@@ -624,18 +709,31 @@ export function usePlayer({
     if (status === 'paused' && audioRef.current?.src) {
       playRequestedRef.current = true
       try {
+        if (audioCtxRef.current?.state === 'suspended') {
+          await audioCtxRef.current.resume()
+        }
         await audioRef.current.play()
         if (!mountedRef.current) return
+        audioUnlockedRef.current = true
         safeSetStatus('playing')
         // Pause stops the rAF end-detector; restart it or we never advance.
         resumeTickRef.current?.()
       } catch (err) {
         if (!mountedRef.current) return
+        if (isAutoplayBlocked(err)) {
+          audioUnlockedRef.current = false
+          playRequestedRef.current = false
+          safeSetError(autoplayBlockedMessage())
+          safeSetStatus('ready')
+          return
+        }
         safeSetError((err as Error).message)
         safeSetStatus('error')
       }
       return
     }
+    // Unlock while we still have the user gesture — model load awaits below.
+    await unlockAudio()
     await init()
     if (clientRef.current == null || !mountedRef.current) return
     const startIdx =
@@ -645,7 +743,7 @@ export function usePlayer({
     playRequestedRef.current = true
     safeSetStatus('playing')
     void playChunk(startIdx)
-  }, [status, init, playChunk, safeSetStatus, safeSetError])
+  }, [status, init, playChunk, unlockAudio, safeSetStatus, safeSetError])
 
   const pause = useCallback((): void => {
     playRequestedRef.current = false
@@ -679,6 +777,7 @@ export function usePlayer({
       if (chunkIdx < 0) return
 
       safeSetError(null)
+      await unlockAudio()
       playTokenRef.current += 1
       releaseAudio()
       clientRef.current?.cancel()
@@ -695,7 +794,7 @@ export function usePlayer({
       safeSetStatus('playing')
       void playChunk(chunkIdx)
     },
-    [init, playChunk, releaseAudio, safeSetStatus, safeSetError, safeSetCurrentChunkIdx],
+    [init, playChunk, unlockAudio, releaseAudio, safeSetStatus, safeSetError, safeSetCurrentChunkIdx],
   )
 
   const skipChunk = useCallback(
@@ -707,6 +806,7 @@ export function usePlayer({
       if (next === base && status === 'playing') return
 
       safeSetError(null)
+      await unlockAudio()
       playTokenRef.current += 1
       releaseAudio()
       clientRef.current?.cancel()
@@ -726,7 +826,7 @@ export function usePlayer({
       safeSetStatus('playing')
       void playChunk(next)
     },
-    [status, init, playChunk, releaseAudio, emitActive, safeSetStatus, safeSetError, safeSetCurrentChunkIdx],
+    [status, init, playChunk, unlockAudio, releaseAudio, emitActive, safeSetStatus, safeSetError, safeSetCurrentChunkIdx],
   )
 
   const toggle = useCallback((): void => {
