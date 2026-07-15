@@ -80,6 +80,8 @@ export default defineConfig({
   // until a lightningcss release recognizes the Custom Highlight API pseudo.
   build: {
     cssMinify: 'esbuild',
+    // Emit .map files so production stack traces resolve to source.
+    sourcemap: true,
     // Kokoro/ORT live in the TTS worker (~2 MB JS + ~21 MB wasm). Already
     // isolated via Worker; raising the limit avoids a noisy false alarm.
     chunkSizeWarningLimit: 2500,
