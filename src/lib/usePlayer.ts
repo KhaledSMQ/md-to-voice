@@ -854,5 +854,6 @@ export function usePlayer({
     seekToWord,
     skipChunk,
     init,
+    unlockAudio,
   }
 }

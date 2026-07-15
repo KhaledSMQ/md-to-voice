@@ -34,6 +34,8 @@ type Props = {
   onNextChunk: () => void
   teleprompterMode: boolean
   onTeleprompterMode: (enabled: boolean) => void
+  autoplayOnPaste: boolean
+  onAutoplayOnPaste: (enabled: boolean) => void
   buffering?: boolean
   chunkReadyTick?: number
 }
@@ -62,6 +64,8 @@ export const Controls = memo(function Controls({
   onNextChunk,
   teleprompterMode,
   onTeleprompterMode,
+  autoplayOnPaste,
+  onAutoplayOnPaste,
   buffering = false,
   chunkReadyTick = 0,
 }: Props) {
@@ -257,6 +261,23 @@ export const Controls = memo(function Controls({
           <span className="min-w-0 flex-1 text-left">
             <span className="block text-xs font-medium text-ink-100">Teleprompter</span>
             <span className="block text-[10px] text-ink-500">Press T while playing</span>
+          </span>
+        </button>
+
+        <button
+          type="button"
+          role="switch"
+          aria-checked={autoplayOnPaste}
+          onClick={() => onAutoplayOnPaste(!autoplayOnPaste)}
+          className={`studio-tele-row ${autoplayOnPaste ? 'is-on' : ''}`}
+          title="Autoplay when pasting markdown"
+        >
+          <span className={`studio-tele-switch ${autoplayOnPaste ? 'is-on' : ''}`} aria-hidden>
+            <span className="studio-tele-knob" />
+          </span>
+          <span className="min-w-0 flex-1 text-left">
+            <span className="block text-xs font-medium text-ink-100">Autoplay on paste</span>
+            <span className="block text-[10px] text-ink-500">Play after ⌘V / Paste</span>
           </span>
         </button>
       </section>

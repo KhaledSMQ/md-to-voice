@@ -40,6 +40,8 @@ export const DEFAULT_APP_SETTINGS = {
   controlsWidth: 280,
   /** Apple Lyrics–style centered teleprompter while speaking. Opt-in. */
   teleprompterMode: false,
+  /** Start playback automatically after pasting markdown. */
+  autoplayOnPaste: true,
   /** Preview panel reading theme (contrast / hue). */
   readingPreset: DEFAULT_READING_PRESET as ReadingPresetId,
   /** Curated reading face. */
@@ -87,6 +89,7 @@ export type AppSettings = {
   sidebarWidth: number
   controlsWidth: number
   teleprompterMode: boolean
+  autoplayOnPaste: boolean
   readingPreset: ReadingPresetId
   readingTypography: ReadingTypographyId
   readingBrightness: number
@@ -143,6 +146,10 @@ export function loadAppSettings(): AppSettings {
       typeof p.teleprompterMode === 'boolean'
         ? p.teleprompterMode
         : DEFAULT_APP_SETTINGS.teleprompterMode
+    const autoplayOnPaste =
+      typeof p.autoplayOnPaste === 'boolean'
+        ? p.autoplayOnPaste
+        : DEFAULT_APP_SETTINGS.autoplayOnPaste
     const readingPreset = isReadingPresetId(p.readingPreset)
       ? p.readingPreset
       : DEFAULT_APP_SETTINGS.readingPreset
@@ -174,6 +181,7 @@ export function loadAppSettings(): AppSettings {
       sidebarWidth,
       controlsWidth,
       teleprompterMode,
+      autoplayOnPaste,
       readingPreset,
       readingTypography,
       readingBrightness,
@@ -212,6 +220,8 @@ export function saveAppSettings(patch: Partial<AppSettings>): void {
           : prev.controlsWidth,
       teleprompterMode:
         typeof patch.teleprompterMode === 'boolean' ? patch.teleprompterMode : prev.teleprompterMode,
+      autoplayOnPaste:
+        typeof patch.autoplayOnPaste === 'boolean' ? patch.autoplayOnPaste : prev.autoplayOnPaste,
       readingPreset: isReadingPresetId(patch.readingPreset)
         ? patch.readingPreset
         : prev.readingPreset,

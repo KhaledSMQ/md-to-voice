@@ -2,6 +2,8 @@
 
 A React app that turns a Markdown file into a karaoke-style read-along, fully in your browser.
 
+**Demo:** https://static-md-to-voice-app-niijy.ondigitalocean.app/
+
 ![md to voice screenshot](screenshot/home.png)
 
 - **In-browser TTS** using [`kokoro-js`](https://www.npmjs.com/package/kokoro-js) (the 82M-parameter Kokoro model running on WebGPU or WebAssembly via Transformers.js).

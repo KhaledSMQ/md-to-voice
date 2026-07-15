@@ -201,8 +201,13 @@ export function Reader({
   const [teleprompterMode, setTeleprompterMode] = useState(
     () => loadAppSettings().teleprompterMode,
   )
+  const [autoplayOnPaste, setAutoplayOnPaste] = useState(
+    () => loadAppSettings().autoplayOnPaste,
+  )
   /** Session-only hide (Esc / Exit) without flipping the saved preference. */
   const [teleprompterDismissed, setTeleprompterDismissed] = useState(false)
+  /** Armed on paste when autoplay is on; fires once deferred parse has chunks. */
+  const pendingAutoplayAfterPaste = useRef(false)
   const [playhead, setPlayhead] = useState<PlayheadVisibility>({ inView: true, out: null })
   const [nowPlayingVisible, setNowPlayingVisible] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
@@ -214,11 +219,11 @@ export function Reader({
 
   useEffect(() => {
     const t = setTimeout(
-      () => saveAppSettings({ voice, speed, volume, teleprompterMode }),
+      () => saveAppSettings({ voice, speed, volume, teleprompterMode, autoplayOnPaste }),
       UI_SAVE_MS,
     )
     return () => clearTimeout(t)
-  }, [voice, speed, volume, teleprompterMode])
+  }, [voice, speed, volume, teleprompterMode, autoplayOnPaste])
 
   const scheduleResumeSave = useCallback(
     (w: number) => {
@@ -278,6 +283,7 @@ export function Reader({
       resumeTimer.current = null
     }
     lastWordHeard.current = 0
+    pendingAutoplayAfterPaste.current = false
   }, [activeDocId])
 
   useEffect(() => {
@@ -490,6 +496,16 @@ export function Reader({
     readerRef.current?.reset()
   }, [onResumeReset])
 
+  const armAutoplayAfterPaste = useCallback(() => {
+    if (!autoplayOnPaste) {
+      pendingAutoplayAfterPaste.current = false
+      return
+    }
+    pendingAutoplayAfterPaste.current = true
+    // Unlock while the paste gesture may still count (before deferred parse).
+    void playerRef.current.unlockAudio()
+  }, [autoplayOnPaste])
+
   const replaceContentAndResetPlayback = useCallback(
     (text: string) => {
       if (resumeTimer.current) {
@@ -507,18 +523,33 @@ export function Reader({
   )
 
   const handlePasteClick = useCallback(async () => {
+    // Prefer unlock before clipboard await — keeps iOS gesture permission.
+    if (autoplayOnPaste) void playerRef.current.unlockAudio()
     try {
       const text = await navigator.clipboard.readText()
       if (!text.trim()) {
+        pendingAutoplayAfterPaste.current = false
         setInlineEdit(true)
         return
       }
+      armAutoplayAfterPaste()
       replaceContentAndResetPlayback(text)
       setInlineEdit(false)
     } catch {
+      pendingAutoplayAfterPaste.current = false
       setInlineEdit(true)
     }
-  }, [replaceContentAndResetPlayback])
+  }, [armAutoplayAfterPaste, autoplayOnPaste, replaceContentAndResetPlayback])
+
+  // Paste → deferred parse → chunks; play after usePlayer's reset microtask.
+  useEffect(() => {
+    if (!pendingAutoplayAfterPaste.current) return
+    if (parsed.chunks.length === 0) return
+    pendingAutoplayAfterPaste.current = false
+    queueMicrotask(() => {
+      void playerRef.current.play()
+    })
+  }, [parsed.chunks])
 
   const openFilePicker = useCallback(() => {
     fileInputRef.current?.click()
@@ -1211,6 +1242,8 @@ export function Reader({
             setTeleprompterMode(enabled)
             if (enabled) setTeleprompterDismissed(false)
           }}
+          autoplayOnPaste={autoplayOnPaste}
+          onAutoplayOnPaste={setAutoplayOnPaste}
           buffering={player.buffering}
           chunkReadyTick={player.chunkReadyTick}
         />
@@ -1286,6 +1319,7 @@ export function Reader({
                 const text = e.clipboardData.getData('text/plain')
                 if (!text.trim()) return
                 e.preventDefault()
+                armAutoplayAfterPaste()
                 replaceContentAndResetPlayback(text)
               }}
               onKeyDown={(e) => {
