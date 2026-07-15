@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
     "@responsivevoice/text": "^2.0.0",
     "embla-carousel": "^8.6.0",
     "embla-carousel-react": "^8.6.0",
@@ -22,6 +23,11 @@
     "remark-gfm": "^4.0.1",
     "siriwave": "^2.4.0",
     "unist-util-visit": "^5.1.0"
+  },
+  "overrides": {
+    "kokoro-js": {
+      "@huggingface/transformers": "$@huggingface/transformers"
+    }
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

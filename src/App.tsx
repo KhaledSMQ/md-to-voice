@@ -430,7 +430,7 @@ export default function App() {
         </div>
       )}
 
-      <main className="flex-1 w-full min-h-0 py-2 sm:py-3 flex flex-col px-3 sm:px-4">
+      <main className="flex min-h-0 w-full flex-1 flex-col px-2 py-1.5 sm:px-4 sm:py-3">
         <Reader
           activeDocId={docId}
           openResume={openResume}
@@ -471,7 +471,7 @@ export default function App() {
       </main>
 
       <footer
-        className={`border-t border-white/5 text-center text-xs text-ink-500 shrink-0 overflow-hidden transition-[max-height,opacity,padding,border-color] duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
+        className={`hidden border-t border-white/5 text-center text-xs text-ink-500 shrink-0 overflow-hidden transition-[max-height,opacity,padding,border-color] duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] lg:block ${
           readingFocus ? 'max-h-0 border-transparent py-0 opacity-0' : 'max-h-16 py-3 opacity-100'
         }`}
       >

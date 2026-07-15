@@ -12,7 +12,10 @@ import { TeleprompterOverlay } from './TeleprompterOverlay'
 import { FileUploader } from './FileUploader'
 import { ShortcutsHelp } from './ShortcutsHelp'
 import { ReaderHud } from './ReaderHud'
+import { MiniTransport } from './MiniTransport'
+import { MobileStudioSheet, MOBILE_PEEK_HEIGHT_PX } from './MobileStudioSheet'
 import { usePlayer } from '../lib/usePlayer'
+import { useMediaQuery } from '../lib/useMediaQuery'
 import {
   loadAppSettings,
   saveAppSettings,
@@ -174,6 +177,8 @@ export function Reader({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [inlineEdit, setInlineEdit] = useState(false)
   const [focusMode, setFocusMode] = useState(false)
+  const [studioSheetOpen, setStudioSheetOpen] = useState(false)
+  const isDesktop = useMediaQuery('(min-width: 1024px)')
   const [bookmarkWordIdx, setBookmarkWordIdx] = useState<number | null>(null)
   const [hudMessage, setHudMessage] = useState<string | null>(null)
   const hudTimer = useRef<number>(0)
@@ -372,6 +377,16 @@ export function Reader({
   useEffect(() => {
     if (inlineEdit && focusMode) setFocusMode(false)
   }, [inlineEdit, focusMode])
+
+  // Listening: keep the mini-player, collapse the expanded sheet.
+  useEffect(() => {
+    if (player.status === 'playing') setStudioSheetOpen(false)
+  }, [player.status])
+
+  // Desktop never uses the sheet; reset so returning to mobile starts at peek.
+  useEffect(() => {
+    if (isDesktop) setStudioSheetOpen(false)
+  }, [isDesktop])
 
   useEffect(() => {
     setBookmarkWordIdx(null)
@@ -1141,7 +1156,7 @@ export function Reader({
   }, [])
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
+    <div className="flex min-h-0 flex-1 flex-col gap-2 sm:gap-3">
       <input
         ref={fileInputRef}
         type="file"
@@ -1209,9 +1224,13 @@ export function Reader({
         listening={immersive}
       />
 
-      <div className={`flex min-h-0 flex-1 flex-col gap-4 lg:flex-row lg:gap-0 ${focusMode ? 'is-focus-mode' : ''}`}>
+      <div
+        className={`flex min-h-0 flex-1 ${isDesktop ? 'flex-row gap-0' : 'flex-col gap-0'} ${focusMode ? 'is-focus-mode' : ''}`}
+        inert={(!isDesktop && studioSheetOpen) || undefined}
+      >
+      {isDesktop && (
       <aside
-        className="studio-deck min-w-0 w-full lg:shrink-0 lg:w-[var(--controls-width)] lg:min-h-0 lg:overflow-y-auto"
+        className="studio-deck min-w-0 shrink-0 w-[var(--controls-width)] min-h-0 overflow-y-auto"
         style={{ ['--controls-width' as string]: `${controlsWidth}px` }}
       >
         <Controls
@@ -1269,7 +1288,9 @@ export function Reader({
           </div>
         </div>
       </aside>
+      )}
 
+      {isDesktop && (
       <ColumnResizeHandle
         value={controlsWidth}
         min={CONTROLS_WIDTH_MIN}
@@ -1278,12 +1299,22 @@ export function Reader({
         onReset={() => onControlsWidthChange(DEFAULT_APP_SETTINGS.controlsWidth)}
         panelSide="end"
         ariaLabel="Resize controls panel"
-        className={`column-resize-handle hidden lg:block ${focusMode ? '!hidden' : ''}`}
+        className={`column-resize-handle ${focusMode ? '!hidden' : ''}`}
       />
+      )}
 
       <div
         ref={readerSurfaceRef}
-        className={`relative flex min-w-0 min-h-[min(50vh,28rem)] flex-col panel-card lg:min-h-0 lg:flex-1 ${READER_MAX_H}`}
+        className={`relative flex min-h-0 min-w-0 flex-1 flex-col panel-card ${READER_MAX_H} ${
+          !isDesktop && !focusMode && !showTeleprompter ? 'has-mobile-peek' : ''
+        }`}
+        style={
+          !isDesktop && !focusMode && !showTeleprompter
+            ? {
+                ['--mobile-peek-pad' as string]: `calc(${MOBILE_PEEK_HEIGHT_PX}px + env(safe-area-inset-bottom, 0px))`,
+              }
+            : undefined
+        }
       >
         <ReaderHud message={hudMessage} />
         {searchActive && (
@@ -1388,7 +1419,7 @@ export function Reader({
                 onWordClick={onWordClick}
                 onActiveVisibilityChange={onActiveVisibilityChange}
                 ref={readerRef}
-                className="markdown-body reader-measure min-h-0 min-w-0 h-full max-h-full flex-1 overflow-y-auto py-6 sm:py-8"
+                className="markdown-body reader-measure min-h-0 min-w-0 h-full max-h-full flex-1 overflow-y-auto py-4 sm:py-6 lg:py-8"
                 style={{
                   ['--reader-font-size' as string]: `${fontSize}px`,
                   ['--reader-measure' as string]: measureWidthCss(measureWidth),
@@ -1410,7 +1441,7 @@ export function Reader({
                   />
                 ))}
               {nowPlayingVisible && playhead.out && (
-                <div className="pointer-events-none absolute bottom-3 left-0 right-0 z-10 flex justify-center">
+                <div className="mobile-now-playing pointer-events-none absolute bottom-3 left-0 right-0 z-10 flex justify-center">
                   <button
                     type="button"
                     onClick={() => readerRef.current?.scrollToActiveNow()}
@@ -1431,7 +1462,7 @@ export function Reader({
         )}
 
         {!noPlayableText && !inlineEdit && (
-          <div className="flex shrink-0 items-center gap-3 border-t border-white/[0.05] px-4 py-1.5 text-[11px] text-ink-500">
+          <div className="flex shrink-0 items-center gap-2 border-t border-white/[0.05] px-3 py-1 text-[11px] text-ink-500 sm:gap-3 sm:px-4 sm:py-1.5">
             <span className="min-w-0 flex-1 truncate font-mono text-ink-400" title={sourceName}>
               {sourceName}
             </span>
@@ -1448,7 +1479,7 @@ export function Reader({
                 >
                   Bookmark
                 </button>
-                <span className="shrink-0 text-ink-600" aria-hidden>
+                <span className="hidden shrink-0 text-ink-600 sm:inline" aria-hidden>
                   ·
                 </span>
               </>
@@ -1458,7 +1489,7 @@ export function Reader({
                 <span className="shrink-0 rounded border border-white/10 px-1.5 py-0.5 text-[10px] text-ink-400">
                   Focus
                 </span>
-                <span className="shrink-0 text-ink-600" aria-hidden>
+                <span className="hidden shrink-0 text-ink-600 sm:inline" aria-hidden>
                   ·
                 </span>
               </>
@@ -1467,10 +1498,10 @@ export function Reader({
               {parsed.words.length.toLocaleString()} word
               {parsed.words.length === 1 ? '' : 's'}
             </span>
-            <span className="shrink-0 text-ink-600" aria-hidden>
+            <span className="hidden shrink-0 text-ink-600 sm:inline" aria-hidden>
               ·
             </span>
-            <span className="shrink-0 tabular-nums">
+            <span className="hidden shrink-0 tabular-nums sm:inline">
               {parsed.chunks.length.toLocaleString()} chunk
               {parsed.chunks.length === 1 ? '' : 's'}
             </span>
@@ -1487,6 +1518,84 @@ export function Reader({
         )}
       </div>
       </div>
+
+      {!isDesktop && (
+        <MobileStudioSheet
+          open={studioSheetOpen}
+          onOpenChange={setStudioSheetOpen}
+          hidden={focusMode || showTeleprompter}
+          peek={
+            <MiniTransport
+              status={player.status}
+              totalChunks={parsed.chunks.length}
+              totalWords={parsed.words.length}
+              activeWordStore={activeWordStore}
+              onPlay={player.play}
+              onPause={player.pause}
+              onStop={handleStop}
+              onPrevChunk={() => void player.skipChunk(-1)}
+              onNextChunk={() => void player.skipChunk(1)}
+              onExpand={() => setStudioSheetOpen(true)}
+            />
+          }
+        >
+          <Controls
+            status={player.status}
+            device={player.device}
+            voices={player.voices}
+            voice={voice}
+            speed={speed}
+            volume={volume}
+            progress={player.progress}
+            error={player.error}
+            totalChunks={parsed.chunks.length}
+            currentChunkIdx={player.currentChunkIdx}
+            totalWords={parsed.words.length}
+            activeWordStore={activeWordStore}
+            analyserRef={player.analyserRef}
+            onVoice={setVoice}
+            onSpeed={setSpeed}
+            onVolume={setVolume}
+            onPlay={player.play}
+            onPause={player.pause}
+            onStop={handleStop}
+            onPrevChunk={() => void player.skipChunk(-1)}
+            onNextChunk={() => void player.skipChunk(1)}
+            teleprompterMode={teleprompterMode}
+            onTeleprompterMode={(enabled) => {
+              if (enabled) closeSearch()
+              setTeleprompterMode(enabled)
+              if (enabled) setTeleprompterDismissed(false)
+            }}
+            autoplayOnPaste={autoplayOnPaste}
+            onAutoplayOnPaste={setAutoplayOnPaste}
+            buffering={player.buffering}
+            chunkReadyTick={player.chunkReadyTick}
+          />
+          <div className="studio-shelf">
+            <div className="studio-shelf-inner">
+              <FileUploader onFile={onFile} compact label="Open Markdown" />
+              <RecentsList
+                documents={documents}
+                activeId={activeDocId}
+                title={sourceName}
+                onSelectDocument={(id) => {
+                  onSelectDocument(id)
+                  setStudioSheetOpen(false)
+                }}
+                onNewDocument={() => {
+                  onNewDocument()
+                  setStudioSheetOpen(false)
+                }}
+                onDeleteDocument={onDeleteDocument}
+                onOpenFile={openFilePicker}
+                recentsSort={recentsSort}
+                onRecentsSortChange={setRecentsSort}
+              />
+            </div>
+          </div>
+        </MobileStudioSheet>
+      )}
     </div>
   )
 }

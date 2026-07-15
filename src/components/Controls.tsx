@@ -115,9 +115,9 @@ export const Controls = memo(function Controls({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="studio-controls space-y-4">
       {/* Stage */}
-      <section className="space-y-2" aria-label="Playback stage">
+      <section className="studio-stage-block space-y-2" aria-label="Playback stage">
         <AudioVisualizer
           analyserRef={analyserRef}
           playerStatus={status}
@@ -237,7 +237,7 @@ export const Controls = memo(function Controls({
         />
       </section>
 
-      {/* Instruments */}
+      {/* Instruments — tucked away while listening on small screens */}
       <section className="studio-instruments" aria-label="Instruments">
         <VoiceCarousel
           voices={voices}

@@ -292,7 +292,7 @@ export function AudioVisualizer({
     >
       {reducedMotion ? (
         <div
-          className={`flex w-full items-center justify-center ${isStage ? 'h-28' : 'h-20 sm:h-24'}`}
+          className={`flex w-full items-center justify-center ${isStage ? 'h-20 lg:h-28' : 'h-20 sm:h-24'}`}
           aria-hidden
         >
           <div className="h-px w-3/4 bg-gradient-to-r from-transparent via-white/25 to-transparent" />
@@ -302,7 +302,7 @@ export function AudioVisualizer({
           ref={containerRef}
           className={
             `w-full transition-opacity duration-500 ${isLive || buffering ? 'opacity-100' : 'opacity-70'} ` +
-            (isStage ? 'h-28' : 'h-20 sm:h-32')
+            (isStage ? 'h-20 lg:h-28' : 'h-20 sm:h-32')
           }
           aria-hidden
         />
