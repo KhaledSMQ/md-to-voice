@@ -33,6 +33,21 @@ function post(msg: WorkerOutbound, transfer: Transferable[] = []): void {
   ctx.postMessage(msg, transfer)
 }
 
+/**
+ * Phones/tablets (and iPadOS-as-desktop) cannot hold Kokoro fp32 (~310 MB) plus
+ * ORT; WebGPU on iOS/WebKit also hard-crashes tabs. Force the small WASM path.
+ */
+function isConstrainedDevice(): boolean {
+  const nav = ctx.navigator as Navigator | undefined
+  if (!nav) return false
+  const ua = (nav.userAgent ?? '').toLowerCase()
+  if (/iphone|ipod|ipad|android|mobile/.test(ua)) return true
+  // iPadOS 13+ often reports as MacIntel with touch points.
+  const platform = (nav as Navigator & { platform?: string }).platform ?? ''
+  if (platform === 'MacIntel' && (nav.maxTouchPoints ?? 0) > 1) return true
+  return false
+}
+
 async function detectWebGPU(): Promise<boolean> {
   try {
     const navAny = (ctx as unknown as { navigator?: { gpu?: unknown } }).navigator
@@ -48,12 +63,27 @@ async function detectWebGPU(): Promise<boolean> {
 async function ensureModel(): Promise<KokoroTTS> {
   if (ttsPromise) return ttsPromise
   ttsPromise = (async () => {
+    if (typeof DecompressionStream === 'undefined') {
+      throw new Error(
+        'This browser lacks DecompressionStream (needed for TTS). Update iOS/Safari to 16.4+ or use a newer Chrome.',
+      )
+    }
+
     // Dynamic import so phonemizer's gzip init runs only after the polyfill above.
+    post({ type: 'progress', status: 'loading', file: 'phonemizer' })
     const { KokoroTTS: KokoroTTSClass } = await import('kokoro-js')
 
-    const useWebGPU = await detectWebGPU()
+    const constrained = isConstrainedDevice()
+    const useWebGPU = !constrained && (await detectWebGPU())
+    // Mobile: always q8 (~88 MB). Desktop WebGPU: fp32. Desktop WASM: q8.
     const device: 'wasm' | 'webgpu' = useWebGPU ? 'webgpu' : 'wasm'
     const dtype: 'fp32' | 'q8' = useWebGPU ? 'fp32' : 'q8'
+
+    post({
+      type: 'progress',
+      status: 'loading',
+      file: constrained ? `kokoro (${dtype}/wasm)` : `kokoro (${dtype}/${device})`,
+    })
 
     const tts = await KokoroTTSClass.from_pretrained(MODEL_ID, {
       dtype,
@@ -86,7 +116,11 @@ async function ensureModel(): Promise<KokoroTTS> {
     const ready: ReadyEvent = { type: 'ready', device, voices }
     post(ready)
     return tts
-  })()
+  })().catch((err: unknown) => {
+    // Allow retry after a failed init (OOM / network / unsupported browser).
+    ttsPromise = null
+    throw err
+  })
   return ttsPromise
 }
 
@@ -186,6 +220,15 @@ ctx.addEventListener('message', (e: MessageEvent<WorkerInbound>) => {
       cancelPending()
       break
   }
+})
+
+// phonemizer's gzip IIFE can reject outside our await chain on some browsers.
+ctx.addEventListener('unhandledrejection', (ev) => {
+  const reason = (ev as PromiseRejectionEvent).reason
+  post({
+    type: 'error',
+    message: reason instanceof Error ? reason.message : String(reason ?? 'Unhandled worker rejection'),
+  })
 })
 
 export {}

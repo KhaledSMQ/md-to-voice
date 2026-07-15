@@ -28,9 +28,18 @@ export function polyfillReadableStreamAsyncIterator(): void {
     }
   }
 
-  proto[Symbol.asyncIterator] = values
+  // defineProperty: Safari sometimes ignores plain assignment on the prototype.
+  Object.defineProperty(proto, Symbol.asyncIterator, {
+    value: values,
+    writable: true,
+    configurable: true,
+  })
   if (typeof proto.values !== 'function') {
-    proto.values = values
+    Object.defineProperty(proto, 'values', {
+      value: values,
+      writable: true,
+      configurable: true,
+    })
   }
 }
 
