@@ -1,5 +1,7 @@
 /// <reference lib="webworker" />
-import { KokoroTTS } from 'kokoro-js'
+// Must evaluate before kokoro-js/phonemizer — Safari/iOS lack stream async iteration.
+import './polyfillReadableStreamAsyncIterator'
+import type { KokoroTTS } from 'kokoro-js'
 import type {
   GenerateMessage,
   GeneratedEvent,
@@ -46,11 +48,14 @@ async function detectWebGPU(): Promise<boolean> {
 async function ensureModel(): Promise<KokoroTTS> {
   if (ttsPromise) return ttsPromise
   ttsPromise = (async () => {
+    // Dynamic import so phonemizer's gzip init runs only after the polyfill above.
+    const { KokoroTTS: KokoroTTSClass } = await import('kokoro-js')
+
     const useWebGPU = await detectWebGPU()
     const device: 'wasm' | 'webgpu' = useWebGPU ? 'webgpu' : 'wasm'
     const dtype: 'fp32' | 'q8' = useWebGPU ? 'fp32' : 'q8'
 
-    const tts = await KokoroTTS.from_pretrained(MODEL_ID, {
+    const tts = await KokoroTTSClass.from_pretrained(MODEL_ID, {
       dtype,
       device,
       progress_callback: (data: unknown) => {
