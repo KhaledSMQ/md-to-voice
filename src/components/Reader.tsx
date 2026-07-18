@@ -60,6 +60,7 @@ import {
   scrollRangeIntoContainer,
 } from '../lib/previewSearch'
 import { MARKDOWN_FILE_ACCEPT, readMarkdownFile } from '../lib/readMarkdownFile'
+import { titleFromPastedText } from '../lib/pasteTitle'
 
 type Props = {
   activeDocId: string
@@ -73,7 +74,7 @@ type Props = {
   onMarkdownChange: (text: string) => void
   sourceName: string
   onTitleChange: (name: string) => void
-  onFile: (name: string, text: string) => void
+  onFile: (name: string, text: string) => void | Promise<boolean | void>
   documents: StoredDocument[]
   onSelectDocument: (id: string) => void
   onNewDocument: () => void
@@ -213,6 +214,8 @@ export function Reader({
   const [teleprompterDismissed, setTeleprompterDismissed] = useState(false)
   /** Armed on paste when autoplay is on; fires once deferred parse has chunks. */
   const pendingAutoplayAfterPaste = useRef(false)
+  /** Paste into a non-empty doc creates a new file; keep autoplay armed across that switch. */
+  const keepAutoplayAcrossDocChange = useRef(false)
   const [playhead, setPlayhead] = useState<PlayheadVisibility>({ inView: true, out: null })
   const [nowPlayingVisible, setNowPlayingVisible] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
@@ -288,7 +291,11 @@ export function Reader({
       resumeTimer.current = null
     }
     lastWordHeard.current = 0
-    pendingAutoplayAfterPaste.current = false
+    if (keepAutoplayAcrossDocChange.current) {
+      keepAutoplayAcrossDocChange.current = false
+    } else {
+      pendingAutoplayAfterPaste.current = false
+    }
   }, [activeDocId])
 
   useEffect(() => {
@@ -548,13 +555,37 @@ export function Reader({
         return
       }
       armAutoplayAfterPaste()
+      // Non-empty doc: open paste as a new file so the current one is preserved.
+      if (!noPlayableText) {
+        keepAutoplayAcrossDocChange.current = true
+        if (resumeTimer.current) {
+          clearTimeout(resumeTimer.current)
+          resumeTimer.current = null
+        }
+        playerRef.current.stop()
+        readerRef.current?.reset()
+        const ok = await Promise.resolve(onFile(titleFromPastedText(text), text))
+        if (ok === false) {
+          keepAutoplayAcrossDocChange.current = false
+          pendingAutoplayAfterPaste.current = false
+          return
+        }
+        setInlineEdit(false)
+        return
+      }
       replaceContentAndResetPlayback(text)
       setInlineEdit(false)
     } catch {
       pendingAutoplayAfterPaste.current = false
       setInlineEdit(true)
     }
-  }, [armAutoplayAfterPaste, autoplayOnPaste, replaceContentAndResetPlayback])
+  }, [
+    armAutoplayAfterPaste,
+    autoplayOnPaste,
+    noPlayableText,
+    onFile,
+    replaceContentAndResetPlayback,
+  ])
 
   // Paste → deferred parse → chunks; play after usePlayer's reset microtask.
   useEffect(() => {

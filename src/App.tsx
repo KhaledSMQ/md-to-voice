@@ -317,7 +317,7 @@ export default function App() {
   }, [applyDocument, refreshDocuments, reportStorageError])
 
   const onFile = useCallback(
-    async (name: string, text: string) => {
+    async (name: string, text: string): Promise<boolean> => {
       const meta = wordMetaFromParsed(parsedRef.current)
       try {
         await putDocument(docIdRef.current, {
@@ -327,11 +327,13 @@ export default function App() {
           lastWordGlobalIdx: meta.lastWordGlobalIdx,
         })
         const d = await createDocument(name || 'pasted.md', text, true)
-        if (!mountedRef.current) return
+        if (!mountedRef.current) return false
         applyDocument(d)
         await refreshDocuments()
+        return true
       } catch (err) {
         reportStorageError(err)
+        return false
       }
     },
     [applyDocument, refreshDocuments, reportStorageError],

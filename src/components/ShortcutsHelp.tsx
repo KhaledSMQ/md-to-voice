@@ -23,7 +23,7 @@ const SHORTCUTS: ShortcutRow[] = [
   { keys: ['⌘', 'F'], join: 'chord', action: 'Find in preview' },
   { keys: ['⌘', 'G'], join: 'chord', action: 'Next find match' },
   { keys: ['⇧', '⌘', 'G'], join: 'chord', action: 'Previous find match' },
-  { keys: ['⌘', 'V'], join: 'chord', action: 'Paste markdown' },
+  { keys: ['⌘', 'V'], join: 'chord', action: 'Paste into empty doc · else new file' },
   { keys: ['⌘', '+', '−'], join: 'chord', action: 'Zoom preview text' },
   { keys: ['⌘', 'Scroll'], join: 'chord', action: 'Zoom preview text' },
   { keys: ['⌘', '⇧', 'Scroll'], join: 'chord', action: 'Adjust line width' },
