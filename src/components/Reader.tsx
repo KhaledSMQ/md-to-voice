@@ -8,6 +8,7 @@ import {
   type ChangeEvent,
   type ReactNode,
 } from 'react'
+import { createPortal } from 'react-dom'
 import { MarkdownReader, type MarkdownReaderHandle, type PlayheadVisibility, type PreviewContextInfo } from './MarkdownReader'
 import { Controls } from './Controls'
 import { ColumnResizeHandle } from './ColumnResizeHandle'
@@ -26,6 +27,7 @@ import { FileUploader } from './FileUploader'
 import { ShortcutsHelp } from './ShortcutsHelp'
 import { ReaderHud } from './ReaderHud'
 import { MiniTransport } from './MiniTransport'
+import { AppMetaFooter } from './AppMetaFooter'
 import { MobileStudioSheet, MOBILE_PEEK_HEIGHT_PX } from './MobileStudioSheet'
 import { usePlayer } from '../lib/usePlayer'
 import { useMediaQuery } from '../lib/useMediaQuery'
@@ -229,6 +231,9 @@ export function Reader({
   const [autoFocusOnPlay, setAutoFocusOnPlay] = useState(
     () => loadAppSettings().autoFocusOnPlay,
   )
+  const [focusMiniPlayer, setFocusMiniPlayer] = useState(
+    () => loadAppSettings().focusMiniPlayer,
+  )
   /** Session-only hide (Esc / Exit) without flipping the saved preference. */
   const [teleprompterDismissed, setTeleprompterDismissed] = useState(false)
   /** Armed on paste when autoplay is on; fires once deferred parse has chunks. */
@@ -261,11 +266,21 @@ export function Reader({
           autoplayOnPaste,
           autoHideOnPlay,
           autoFocusOnPlay,
+          focusMiniPlayer,
         }),
       UI_SAVE_MS,
     )
     return () => clearTimeout(t)
-  }, [voice, speed, volume, teleprompterMode, autoplayOnPaste, autoHideOnPlay, autoFocusOnPlay])
+  }, [
+    voice,
+    speed,
+    volume,
+    teleprompterMode,
+    autoplayOnPaste,
+    autoHideOnPlay,
+    autoFocusOnPlay,
+    focusMiniPlayer,
+  ])
 
   const scheduleResumeSave = useCallback(
     (w: number) => {
@@ -415,6 +430,10 @@ export function Reader({
     (player.status === 'playing' || player.status === 'paused')
 
   const immersive = readingFocus || focusMode
+
+  const showFocusMini = focusMode && focusMiniPlayer && !showTeleprompter
+  /** Mobile sheet peek only — focus mini floats over text (no layout pad). */
+  const showPeekPad = !isDesktop && !focusMode && !showTeleprompter
 
   useEffect(() => {
     if (inlineEdit && focusMode) setFocusMode(false)
@@ -1486,6 +1505,8 @@ export function Reader({
           onAutoHideOnPlay={setAutoHideOnPlay}
           autoFocusOnPlay={autoFocusOnPlay}
           onAutoFocusOnPlay={setAutoFocusOnPlay}
+          focusMiniPlayer={focusMiniPlayer}
+          onFocusMiniPlayer={setFocusMiniPlayer}
           buffering={player.buffering}
           chunkReadyTick={player.chunkReadyTick}
         />
@@ -1510,6 +1531,7 @@ export function Reader({
             />
           </div>
         </div>
+        <AppMetaFooter />
       </aside>
       )}
 
@@ -1529,10 +1551,10 @@ export function Reader({
       <div
         ref={readerSurfaceRef}
         className={`relative flex min-h-0 min-w-0 flex-1 flex-col panel-card ${READER_MAX_H} ${
-          !isDesktop && !focusMode && !showTeleprompter ? 'has-mobile-peek' : ''
+          showPeekPad ? 'has-mobile-peek' : ''
         }`}
         style={
-          !isDesktop && !focusMode && !showTeleprompter
+          showPeekPad
             ? {
                 ['--mobile-peek-pad' as string]: `calc(${MOBILE_PEEK_HEIGHT_PX}px + env(safe-area-inset-bottom, 0px))`,
               }
@@ -1750,6 +1772,25 @@ export function Reader({
       </div>
       </div>
 
+      {showFocusMini &&
+        createPortal(
+          <div className="focus-mini-player" role="region" aria-label="Focus mini player">
+            <MiniTransport
+              status={player.status}
+              totalChunks={parsed.chunks.length}
+              totalWords={parsed.words.length}
+              activeWordStore={activeWordStore}
+              onPlay={player.play}
+              onPause={player.pause}
+              onStop={handleStop}
+              onPrevChunk={() => void player.skipChunk(-1)}
+              onNextChunk={() => void player.skipChunk(1)}
+              onExpand={() => setFocusMode(false)}
+            />
+          </div>,
+          document.body,
+        )}
+
       {!isDesktop && (
         <MobileStudioSheet
           open={studioSheetOpen}
@@ -1804,6 +1845,8 @@ export function Reader({
             onAutoHideOnPlay={setAutoHideOnPlay}
             autoFocusOnPlay={autoFocusOnPlay}
             onAutoFocusOnPlay={setAutoFocusOnPlay}
+            focusMiniPlayer={focusMiniPlayer}
+            onFocusMiniPlayer={setFocusMiniPlayer}
             buffering={player.buffering}
             chunkReadyTick={player.chunkReadyTick}
           />
@@ -1829,6 +1872,7 @@ export function Reader({
               />
             </div>
           </div>
+          <AppMetaFooter />
         </MobileStudioSheet>
       )}
     </div>

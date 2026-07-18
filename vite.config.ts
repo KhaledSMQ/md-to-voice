@@ -1,8 +1,38 @@
+import { execSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
+const GITHUB_REPO_URL = 'https://github.com/KhaledSMQ/md-to-voice'
+
+function gitMeta(): { short: string; commitUrl: string } {
+  try {
+    const short = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim()
+    const full = execSync('git rev-parse HEAD', { encoding: 'utf8' }).trim()
+    // Unpushed local commits 404 on /commit/<sha>; fall back to the history page.
+    const onRemote = execSync(`git branch -r --contains ${full}`, { encoding: 'utf8' }).trim()
+    return {
+      short,
+      commitUrl: onRemote
+        ? `${GITHUB_REPO_URL}/commit/${short}`
+        : `${GITHUB_REPO_URL}/commits/main`,
+    }
+  } catch {
+    return { short: 'unknown', commitUrl: `${GITHUB_REPO_URL}/commits/main` }
+  }
+}
+
+const appVersion = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
+  .version as string
+const { short: gitCommit, commitUrl: gitCommitUrl } = gitMeta()
+
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+    __GIT_COMMIT__: JSON.stringify(gitCommit),
+    __GIT_COMMIT_URL__: JSON.stringify(gitCommitUrl),
+  },
   plugins: [
     react(),
     VitePWA({

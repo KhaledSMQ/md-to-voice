@@ -40,6 +40,8 @@ type Props = {
   onAutoHideOnPlay: (enabled: boolean) => void
   autoFocusOnPlay: boolean
   onAutoFocusOnPlay: (enabled: boolean) => void
+  focusMiniPlayer: boolean
+  onFocusMiniPlayer: (enabled: boolean) => void
   buffering?: boolean
   chunkReadyTick?: number
 }
@@ -74,6 +76,8 @@ export const Controls = memo(function Controls({
   onAutoHideOnPlay,
   autoFocusOnPlay,
   onAutoFocusOnPlay,
+  focusMiniPlayer,
+  onFocusMiniPlayer,
   buffering = false,
   chunkReadyTick = 0,
 }: Props) {
@@ -320,6 +324,23 @@ export const Controls = memo(function Controls({
           <span className="min-w-0 flex-1 text-left">
             <span className="block text-xs font-medium text-ink-100">Auto focus on play</span>
             <span className="block text-[10px] text-ink-500">Focus mode when play starts</span>
+          </span>
+        </button>
+
+        <button
+          type="button"
+          role="switch"
+          aria-checked={focusMiniPlayer}
+          onClick={() => onFocusMiniPlayer(!focusMiniPlayer)}
+          className={`studio-tele-row ${focusMiniPlayer ? 'is-on' : ''}`}
+          title="Keep mini transport bar while in focus mode"
+        >
+          <span className={`studio-tele-switch ${focusMiniPlayer ? 'is-on' : ''}`} aria-hidden>
+            <span className="studio-tele-knob" />
+          </span>
+          <span className="min-w-0 flex-1 text-left">
+            <span className="block text-xs font-medium text-ink-100">Focus mini player</span>
+            <span className="block text-[10px] text-ink-500">Keep transport while focused</span>
           </span>
         </button>
       </section>

@@ -46,6 +46,8 @@ export const DEFAULT_APP_SETTINGS = {
   autoHideOnPlay: true,
   /** Enter focus mode automatically when playback starts. */
   autoFocusOnPlay: false,
+  /** Keep a mini transport bar while in focus mode. */
+  focusMiniPlayer: true,
   /** Preview panel reading theme (contrast / hue). */
   readingPreset: DEFAULT_READING_PRESET as ReadingPresetId,
   /** Curated reading face. */
@@ -96,6 +98,7 @@ export type AppSettings = {
   autoplayOnPaste: boolean
   autoHideOnPlay: boolean
   autoFocusOnPlay: boolean
+  focusMiniPlayer: boolean
   readingPreset: ReadingPresetId
   readingTypography: ReadingTypographyId
   readingBrightness: number
@@ -164,6 +167,10 @@ export function loadAppSettings(): AppSettings {
       typeof p.autoFocusOnPlay === 'boolean'
         ? p.autoFocusOnPlay
         : DEFAULT_APP_SETTINGS.autoFocusOnPlay
+    const focusMiniPlayer =
+      typeof p.focusMiniPlayer === 'boolean'
+        ? p.focusMiniPlayer
+        : DEFAULT_APP_SETTINGS.focusMiniPlayer
     const readingPreset = isReadingPresetId(p.readingPreset)
       ? p.readingPreset
       : DEFAULT_APP_SETTINGS.readingPreset
@@ -198,6 +205,7 @@ export function loadAppSettings(): AppSettings {
       autoplayOnPaste,
       autoHideOnPlay,
       autoFocusOnPlay,
+      focusMiniPlayer,
       readingPreset,
       readingTypography,
       readingBrightness,
@@ -242,6 +250,8 @@ export function saveAppSettings(patch: Partial<AppSettings>): void {
         typeof patch.autoHideOnPlay === 'boolean' ? patch.autoHideOnPlay : prev.autoHideOnPlay,
       autoFocusOnPlay:
         typeof patch.autoFocusOnPlay === 'boolean' ? patch.autoFocusOnPlay : prev.autoFocusOnPlay,
+      focusMiniPlayer:
+        typeof patch.focusMiniPlayer === 'boolean' ? patch.focusMiniPlayer : prev.focusMiniPlayer,
       readingPreset: isReadingPresetId(patch.readingPreset)
         ? patch.readingPreset
         : prev.readingPreset,

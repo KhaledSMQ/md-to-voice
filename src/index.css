@@ -1179,6 +1179,118 @@ body {
     color: rgb(241 245 249);
   }
 
+  /* Focus-mode floating glass transport (Apple-style, over text) */
+  .focus-mini-player {
+    position: fixed;
+    left: 50%;
+    bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+    z-index: 55;
+    width: min(22.5rem, calc(100vw - 1.75rem));
+    pointer-events: auto;
+    transform: translate3d(-50%, 0, 0);
+    border-radius: 1.35rem;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    background:
+      linear-gradient(
+        155deg,
+        rgba(255, 255, 255, 0.22) 0%,
+        rgba(255, 255, 255, 0.06) 42%,
+        rgba(15, 23, 42, 0.28) 100%
+      ),
+      rgba(15, 23, 42, 0.38);
+    backdrop-filter: blur(28px) saturate(1.65);
+    -webkit-backdrop-filter: blur(28px) saturate(1.65);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.28) inset,
+      0 -1px 0 rgba(0, 0, 0, 0.12) inset,
+      0 18px 48px -12px rgba(2, 6, 23, 0.55),
+      0 8px 20px -8px rgba(252, 211, 77, 0.18);
+    animation: focus-mini-in 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  @keyframes focus-mini-in {
+    from {
+      opacity: 0;
+      transform: translate3d(-50%, 14px, 0) scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: translate3d(-50%, 0, 0) scale(1);
+    }
+  }
+
+  .focus-mini-player .mini-transport {
+    padding: 10px 12px 12px;
+  }
+
+  .focus-mini-player .mini-transport-meter {
+    height: 2.5px;
+    margin: 0 4px 10px;
+    background: rgba(255, 255, 255, 0.14);
+  }
+
+  .focus-mini-player .mini-transport-meter-fill {
+    background: linear-gradient(
+      90deg,
+      rgba(253, 230, 138, 0.95),
+      rgba(252, 211, 77, 0.9) 55%,
+      rgba(251, 191, 36, 0.85)
+    );
+    box-shadow: 0 0 10px rgba(252, 211, 77, 0.35);
+  }
+
+  .focus-mini-player .mini-transport-row {
+    gap: 6px;
+    height: 40px;
+    justify-content: center;
+  }
+
+  .focus-mini-player .mini-transport-btn {
+    height: 40px;
+    width: 40px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(248, 250, 252, 0.92);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.12) inset;
+  }
+
+  .focus-mini-player .mini-transport-btn:hover {
+    border-color: rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.16);
+  }
+
+  .focus-mini-player .mini-transport-play {
+    height: 40px;
+    min-width: 4.75rem;
+    flex: 0 1 5.5rem;
+    background: rgba(252, 211, 77, 0.95);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.35) inset,
+      0 10px 28px -8px rgba(252, 211, 77, 0.55);
+  }
+
+  .focus-mini-player .mini-transport-play:hover {
+    background: rgb(253 230 138);
+  }
+
+  .focus-mini-player .mini-transport-play.is-playing {
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.4) inset,
+      0 0 0 1px rgba(252, 211, 77, 0.25),
+      0 12px 32px -6px rgba(252, 211, 77, 0.6);
+  }
+
+  .focus-mini-player .mini-transport-expand {
+    background: rgba(255, 255, 255, 0.12);
+    color: rgb(248 250 252);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .focus-mini-player {
+      animation: none;
+    }
+  }
+
   /* Preview clears the fixed peek bar */
   .panel-card.has-mobile-peek .markdown-body,
   .panel-card.has-mobile-peek .reader-editor-measure {
