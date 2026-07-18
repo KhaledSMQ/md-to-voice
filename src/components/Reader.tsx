@@ -1604,53 +1604,55 @@ export function Reader({
       >
       {isDesktop && (
       <aside
-        className="studio-deck min-w-0 shrink-0 w-[var(--controls-width)] min-h-0 overflow-y-auto"
+        className="studio-deck min-w-0 shrink-0 w-[var(--controls-width)] min-h-0 overflow-hidden"
         style={{ ['--controls-width' as string]: `${controlsWidth}px` }}
       >
-        <Controls
-          status={player.status}
-          device={player.device}
-          voices={player.voices}
-          voice={voice}
-          speed={speed}
-          volume={volume}
-          progress={player.progress}
-          error={player.error}
-          totalChunks={parsed.chunks.length}
-          currentChunkIdx={player.currentChunkIdx}
-          totalWords={parsed.words.length}
-          activeWordStore={activeWordStore}
-          analyserRef={player.analyserRef}
-          onVoice={setVoice}
-          onSpeed={setSpeed}
-          onVolume={setVolume}
-          onPlay={player.play}
-          onPause={player.pause}
-          onStop={handleStop}
-          onPrevChunk={() => void player.skipChunk(-1)}
-          onNextChunk={() => void player.skipChunk(1)}
-          buffering={player.buffering}
-          chunkReadyTick={player.chunkReadyTick}
-        />
+        <div className="studio-deck-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          <Controls
+            status={player.status}
+            device={player.device}
+            voices={player.voices}
+            voice={voice}
+            speed={speed}
+            volume={volume}
+            progress={player.progress}
+            error={player.error}
+            totalChunks={parsed.chunks.length}
+            currentChunkIdx={player.currentChunkIdx}
+            totalWords={parsed.words.length}
+            activeWordStore={activeWordStore}
+            analyserRef={player.analyserRef}
+            onVoice={setVoice}
+            onSpeed={setSpeed}
+            onVolume={setVolume}
+            onPlay={player.play}
+            onPause={player.pause}
+            onStop={handleStop}
+            onPrevChunk={() => void player.skipChunk(-1)}
+            onNextChunk={() => void player.skipChunk(1)}
+            buffering={player.buffering}
+            chunkReadyTick={player.chunkReadyTick}
+          />
 
-        <div
-          className={`studio-shelf ${immersive ? 'is-collapsed' : ''}`}
-          inert={immersive || undefined}
-          aria-hidden={immersive || undefined}
-        >
-          <div className="studio-shelf-inner">
-            <FileUploader onFile={onFile} compact label="Open Markdown" />
-            <RecentsList
-              documents={documents}
-              activeId={activeDocId}
-              title={sourceName}
-              onSelectDocument={onSelectDocument}
-              onNewDocument={onNewDocument}
-              onDeleteDocument={onDeleteDocument}
-              onOpenFile={openFilePicker}
-              recentsSort={recentsSort}
-              onRecentsSortChange={setRecentsSort}
-            />
+          <div
+            className={`studio-shelf ${immersive ? 'is-collapsed' : ''}`}
+            inert={immersive || undefined}
+            aria-hidden={immersive || undefined}
+          >
+            <div className="studio-shelf-inner">
+              <FileUploader onFile={onFile} compact label="Open Markdown" />
+              <RecentsList
+                documents={documents}
+                activeId={activeDocId}
+                title={sourceName}
+                onSelectDocument={onSelectDocument}
+                onNewDocument={onNewDocument}
+                onDeleteDocument={onDeleteDocument}
+                onOpenFile={openFilePicker}
+                recentsSort={recentsSort}
+                onRecentsSortChange={setRecentsSort}
+              />
+            </div>
           </div>
         </div>
         <AppMetaFooter />

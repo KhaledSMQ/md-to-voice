@@ -175,7 +175,7 @@ export function RecentsList({
 
   return (
     <>
-      <section className="space-y-2" aria-labelledby="recents-heading">
+      <section className="library-section space-y-2" aria-labelledby="recents-heading">
         <div className="flex items-center justify-between gap-2">
           <h2
             id="recents-heading"
@@ -298,7 +298,7 @@ export function RecentsList({
           </div>
         ) : (
           <ul
-            className="studio-shelf-list library-list max-h-[min(40vh,16rem)] space-y-1 overflow-y-auto overscroll-contain pr-0.5"
+            className="studio-shelf-list library-list space-y-0.5"
             aria-label="Document history"
           >
             {recentsVisible.map((d) => {
@@ -317,6 +317,7 @@ export function RecentsList({
                     ? 'Resume'
                     : null
               }
+              const progressPct = rv.showBar ? rv.pct : 0
               return (
                 <li key={d.id} className="group">
                   <div
@@ -330,7 +331,7 @@ export function RecentsList({
                     <button
                       type="button"
                       onClick={() => onSelectDocument(d.id)}
-                      className="min-w-0 flex-1 rounded-lg py-1.5 pl-2.5 pr-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-300/40"
+                      className="min-w-0 flex-1 rounded-lg px-2.5 py-2 pr-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-300/40"
                       title={d.title}
                     >
                       <div
@@ -341,7 +342,7 @@ export function RecentsList({
                       >
                         {displayTitle}
                       </div>
-                      <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[9px] leading-tight text-ink-500">
+                      <div className="mt-1 flex min-w-0 items-center gap-x-1.5 text-[9px] leading-none text-ink-500">
                         <span className="inline-flex min-w-0 items-center gap-0.5 truncate">
                           <IconClock className="h-2.5 w-2.5 shrink-0 opacity-80" />
                           <span className="truncate">{when}</span>
@@ -355,20 +356,24 @@ export function RecentsList({
                           </>
                         )}
                       </div>
-                      {rv.showBar && (
-                        <div
-                          className="mt-1.5 h-0.5 overflow-hidden rounded-full bg-white/10"
-                          role="progressbar"
-                          aria-valuenow={rv.pct}
-                          aria-valuemin={0}
-                          aria-valuemax={100}
-                        >
+                      <div
+                        className={
+                          'mt-1.5 h-0.5 overflow-hidden rounded-full ' +
+                          (rv.showBar ? 'bg-white/10' : 'bg-white/[0.04]')
+                        }
+                        role={rv.showBar ? 'progressbar' : undefined}
+                        aria-valuenow={rv.showBar ? progressPct : undefined}
+                        aria-valuemin={rv.showBar ? 0 : undefined}
+                        aria-valuemax={rv.showBar ? 100 : undefined}
+                        aria-hidden={rv.showBar ? undefined : true}
+                      >
+                        {rv.showBar && (
                           <div
                             className="h-full rounded-full bg-gradient-to-r from-amber-500/50 to-amber-300/70"
-                            style={{ width: `${rv.pct}%` }}
+                            style={{ width: `${progressPct}%` }}
                           />
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </button>
                     <button
                       type="button"
