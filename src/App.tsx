@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Reader } from './components/Reader'
 import { FileDropOverlay } from './components/FileDropOverlay'
 import {
@@ -8,10 +8,12 @@ import {
   getDocumentById,
   listAllDocuments,
   loadInitialDocument,
+  putBookmarksOnly,
   putDocument,
   putResumeOnly,
   setActiveId,
   touchPlayed,
+  type DocumentBookmark,
   type StoredDocument,
 } from './lib/documentStore'
 import {
@@ -269,6 +271,22 @@ export default function App() {
     setOpenResume(0)
   }, [patchDocInList, reportStorageError])
 
+  const activeBookmarks = useMemo((): DocumentBookmark[] => {
+    const d = documents.find((x) => x.id === docId)
+    return d?.bookmarks ?? []
+  }, [documents, docId])
+
+  const onBookmarksChange = useCallback(
+    (bookmarks: DocumentBookmark[]) => {
+      const id = docIdRef.current
+      patchDocInList(id, {
+        bookmarks: bookmarks.length > 0 ? bookmarks : undefined,
+      })
+      void putBookmarksOnly(id, bookmarks).catch(reportStorageError)
+    },
+    [patchDocInList, reportStorageError],
+  )
+
   const selectDocument = useCallback(
     async (id: string) => {
       if (id === docIdRef.current) return
@@ -439,6 +457,8 @@ export default function App() {
           onResumeFromPlayback={onResumeFromPlayback}
           onResumeFlush={onResumeFlush}
           onResumeReset={onResumeReset}
+          bookmarks={activeBookmarks}
+          onBookmarksChange={onBookmarksChange}
           markdown={markdown}
           parsed={parsed}
           sourceName={title}

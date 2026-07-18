@@ -68,6 +68,10 @@ npm test
 - Code blocks are rendered as Markdown but **skipped by the TTS** (not added to the chunk plan).
 - Word-level timing is interpolated from the per-chunk audio duration; it is intentionally a heuristic, not a forced alignment. It feels in sync at normal speeds.
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for Conventional Commits and how releases bump the app version on `main`.
+
 ## License
 
 MIT.

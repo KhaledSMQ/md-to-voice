@@ -98,6 +98,16 @@ export function chunkWordEndTimes(chunk: Chunk, durationSec: number): number[] {
 }
 
 /**
+ * Estimated audio start time (seconds) for the word at `localIdx` given
+ * cumulative end times. Word 0 starts at 0 (includes leading silence).
+ */
+export function wordStartTime(ends: number[], localIdx: number): number {
+  if (localIdx <= 0 || ends.length === 0) return 0
+  const i = Math.min(localIdx, ends.length) - 1
+  return Math.max(0, ends[i]!)
+}
+
+/**
  * Given an array of cumulative end times for a chunk's words and an elapsed
  * time `t`, return the index (within the chunk) of the currently active word,
  * or `chunk.words.length` if past the last word. Uses binary search.

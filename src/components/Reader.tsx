@@ -28,6 +28,7 @@ import { ShortcutsHelp } from './ShortcutsHelp'
 import { ReaderHud } from './ReaderHud'
 import { MiniTransport } from './MiniTransport'
 import { AppMetaFooter } from './AppMetaFooter'
+import { BookmarksMenu } from './BookmarksMenu'
 import { MobileStudioSheet, MOBILE_PEEK_HEIGHT_PX } from './MobileStudioSheet'
 import { usePlayer } from '../lib/usePlayer'
 import { useMediaQuery } from '../lib/useMediaQuery'
@@ -63,6 +64,15 @@ import {
   type ReadingTypographyId,
 } from '../lib/readingTypography'
 import type { ParsedDocument } from '../lib/parseDocument'
+import {
+  bookmarkWordIdxSet,
+  clampBookmarks,
+  findBookmarkAtWord,
+  nextCycleIndex,
+  removeBookmark,
+  toggleBookmark,
+  type DocumentBookmark,
+} from '../lib/bookmarks'
 import { sortRecents, type RecentsSort, type StoredDocument } from '../lib/documentStore'
 import { scrollHeadingIntoContainer } from '../lib/documentOutline'
 import { adjacentSentenceStart, sentenceStartIndices } from '../lib/sentenceNav'
@@ -84,6 +94,8 @@ type Props = {
   onResumeFromPlayback: (wordIdx: number) => void
   onResumeFlush: (wordIdx: number) => void
   onResumeReset: () => void
+  bookmarks: DocumentBookmark[]
+  onBookmarksChange: (bookmarks: DocumentBookmark[]) => void
   markdown: string
   parsed: ParsedDocument
   onMarkdownChange: (text: string) => void
@@ -130,6 +142,8 @@ export function Reader({
   onResumeFromPlayback,
   onResumeFlush,
   onResumeReset,
+  bookmarks,
+  onBookmarksChange,
   markdown,
   parsed,
   onMarkdownChange,
@@ -195,7 +209,8 @@ export function Reader({
   const [focusMode, setFocusMode] = useState(false)
   const [studioSheetOpen, setStudioSheetOpen] = useState(false)
   const isDesktop = useMediaQuery('(min-width: 1024px)')
-  const [bookmarkWordIdx, setBookmarkWordIdx] = useState<number | null>(null)
+  const bookmarkCycleRef = useRef<number | null>(null)
+  const bookmarkIdxSet = useMemo(() => bookmarkWordIdxSet(bookmarks), [bookmarks])
   const [hudMessage, setHudMessage] = useState<string | null>(null)
   const hudTimer = useRef<number>(0)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -450,8 +465,17 @@ export function Reader({
   }, [isDesktop])
 
   useEffect(() => {
-    setBookmarkWordIdx(null)
+    bookmarkCycleRef.current = null
   }, [activeDocId])
+
+  useEffect(() => {
+    if (parsed.words.length === 0) {
+      if (bookmarks.length > 0) onBookmarksChange([])
+      return
+    }
+    const next = clampBookmarks(bookmarks, parsed.words)
+    if (next !== bookmarks) onBookmarksChange(next)
+  }, [parsed.words, bookmarks, onBookmarksChange])
 
   const showHud = useCallback((text: string, ms = 900) => {
     setHudMessage(text)
@@ -731,14 +755,66 @@ export function Reader({
     [showHud],
   )
 
+  const jumpToBookmark = useCallback(
+    (b: DocumentBookmark) => {
+      void playerRef.current.seekToWord(b.wordIdx)
+      const reader = readerRef.current
+      if (reader) {
+        reader.setActive(b.wordIdx)
+        reader.scrollToActiveNow()
+      }
+      showHud(`Jumped to “${b.label}”`)
+    },
+    [showHud],
+  )
+
+  const jumpBookmarkCycle = useCallback(() => {
+    if (bookmarks.length === 0) {
+      showHud('No bookmarks')
+      return
+    }
+    const next = nextCycleIndex(bookmarkCycleRef.current, bookmarks.length)
+    bookmarkCycleRef.current = next
+    const b = bookmarks[next]
+    if (!b) return
+    jumpToBookmark(b)
+  }, [bookmarks, jumpToBookmark, showHud])
+
   const bookmarkAtWord = useCallback(
     (wIdx: number) => {
-      setBookmarkWordIdx(wIdx)
       const word = parsed.words.find((t) => t.idx === wIdx)
-      showHud(word ? `Bookmark “${word.text}”` : 'Bookmark set')
+      const { bookmarks: next, added } = toggleBookmark(
+        bookmarks,
+        wIdx,
+        word?.text ?? '',
+      )
+      bookmarkCycleRef.current = null
+      onBookmarksChange(next)
+      showHud(
+        added
+          ? word
+            ? `Bookmark “${word.text}”`
+            : 'Bookmark added'
+          : 'Bookmark removed',
+      )
     },
-    [parsed.words, showHud],
+    [bookmarks, onBookmarksChange, parsed.words, showHud],
   )
+
+  const removeBookmarkById = useCallback(
+    (id: string) => {
+      bookmarkCycleRef.current = null
+      onBookmarksChange(removeBookmark(bookmarks, id))
+      showHud('Bookmark removed')
+    },
+    [bookmarks, onBookmarksChange, showHud],
+  )
+
+  const clearAllBookmarks = useCallback(() => {
+    bookmarkCycleRef.current = null
+    onBookmarksChange([])
+    showHud('Bookmarks cleared')
+  }, [onBookmarksChange, showHud])
 
   useEffect(() => {
     readerRef.current?.reset()
@@ -912,9 +988,10 @@ export function Reader({
     }
 
     if (wIdx != null) {
+      const atWord = findBookmarkAtWord(bookmarks, wIdx)
       items.push({
         id: 'bookmark',
-        label: 'Bookmark here',
+        label: atWord ? 'Remove bookmark' : 'Bookmark here',
         hint: 'B',
         icon: <IconBookmark />,
         separatorBefore: items.length > 0,
@@ -922,17 +999,14 @@ export function Reader({
       })
     }
 
-    if (bookmarkWordIdx != null) {
+    if (bookmarks.length > 0) {
       items.push({
         id: 'jump-bookmark',
-        label: 'Jump to bookmark',
+        label: bookmarks.length === 1 ? 'Jump to bookmark' : 'Jump to next bookmark',
         hint: "'",
         icon: <IconJumpBookmark />,
         separatorBefore: wIdx == null && items.length > 0,
-        onSelect: () => {
-          void playerRef.current.seekToWord(bookmarkWordIdx)
-          showHud('Jumped to bookmark')
-        },
+        onSelect: () => jumpBookmarkCycle(),
       })
     }
 
@@ -961,13 +1035,13 @@ export function Reader({
   }, [
     previewMenu,
     parsed.words,
-    bookmarkWordIdx,
+    bookmarks,
     onWordClick,
     copyPreviewText,
     bookmarkAtWord,
+    jumpBookmarkCycle,
     openSearch,
     closeSearch,
-    showHud,
   ])
 
   const jumpToOutlineSection = useCallback(
@@ -1156,7 +1230,7 @@ export function Reader({
     focusMode,
     outlineOpen,
     outlineAvailable,
-    bookmarkWordIdx,
+    hasBookmarks: bookmarks.length > 0,
     openResume,
     activeDocId,
     sortedDocuments,
@@ -1174,6 +1248,7 @@ export function Reader({
     skipSentence,
     bumpSpeed,
     bookmarkAtWord,
+    jumpBookmarkCycle,
   })
   keydownCtxRef.current = {
     inlineEdit,
@@ -1184,7 +1259,7 @@ export function Reader({
     focusMode,
     outlineOpen,
     outlineAvailable,
-    bookmarkWordIdx,
+    hasBookmarks: bookmarks.length > 0,
     openResume,
     activeDocId,
     sortedDocuments,
@@ -1202,6 +1277,7 @@ export function Reader({
     skipSentence,
     bumpSpeed,
     bookmarkAtWord,
+    jumpBookmarkCycle,
   }
 
   useEffect(() => {
@@ -1350,13 +1426,12 @@ export function Reader({
         if (w == null) return
         ctx.bookmarkAtWord(w)
       } else if (e.key === "'") {
-        if (ctx.bookmarkWordIdx == null) {
-          ctx.showHud('No bookmark')
+        if (!ctx.hasBookmarks) {
+          ctx.showHud('No bookmarks')
           return
         }
         e.preventDefault()
-        void playerRef.current.seekToWord(ctx.bookmarkWordIdx)
-        ctx.showHud('Jumped to bookmark')
+        ctx.jumpBookmarkCycle()
       } else if (e.key === 't' || e.key === 'T') {
         const live =
           playerRef.current.status === 'playing' || playerRef.current.status === 'paused'
@@ -1661,6 +1736,7 @@ export function Reader({
               <MarkdownReader
                 reactNode={parsed.reactNode}
                 parseKey={parseKey}
+                bookmarkWordIdxs={bookmarkIdxSet}
                 onWordClick={onWordClick}
                 onContextMenuWord={onPreviewContextMenu}
                 onActiveVisibilityChange={onActiveVisibilityChange}
@@ -1719,19 +1795,18 @@ export function Reader({
             <span className="min-w-0 flex-1 truncate font-mono text-ink-400" title={sourceName}>
               {sourceName}
             </span>
-            {bookmarkWordIdx != null && (
+            {bookmarks.length > 0 && (
               <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void playerRef.current.seekToWord(bookmarkWordIdx)
-                    showHud('Jumped to bookmark')
+                <BookmarksMenu
+                  bookmarks={bookmarks}
+                  onJump={(b) => {
+                    const i = bookmarks.findIndex((x) => x.id === b.id)
+                    bookmarkCycleRef.current = i >= 0 ? i : null
+                    jumpToBookmark(b)
                   }}
-                  title="Jump to bookmark (')"
-                  className="shrink-0 rounded border border-amber-300/25 bg-amber-300/10 px-1.5 py-0.5 font-mono text-[10px] text-amber-100/90 transition hover:bg-amber-300/20"
-                >
-                  Bookmark
-                </button>
+                  onRemove={removeBookmarkById}
+                  onClearAll={clearAllBookmarks}
+                />
                 <span className="hidden shrink-0 text-ink-600 sm:inline" aria-hidden>
                   ·
                 </span>

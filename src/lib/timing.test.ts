@@ -4,6 +4,7 @@ import {
   LEADING_SILENCE_SEC,
   activeWordInChunk,
   chunkWordEndTimes,
+  wordStartTime,
 } from './timing'
 import type { Chunk } from './chunker'
 import type { WordToken } from './tokenize'
@@ -70,5 +71,18 @@ describe('activeWordInChunk', () => {
   it('returns length when past the last end', () => {
     const ends = [0.5, 1.0]
     expect(activeWordInChunk(ends, 2)).toBe(2)
+  })
+})
+
+describe('wordStartTime', () => {
+  it('returns 0 for the first word or empty ends', () => {
+    expect(wordStartTime([], 0)).toBe(0)
+    expect(wordStartTime([0.5, 1.0], 0)).toBe(0)
+  })
+
+  it('returns the prior word end for later words', () => {
+    const ends = [0.5, 1.0, 1.5]
+    expect(wordStartTime(ends, 1)).toBe(0.5)
+    expect(wordStartTime(ends, 2)).toBe(1.0)
   })
 })

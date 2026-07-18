@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import { TTSClient, type TTSResult } from './tts/ttsClient'
 import type { Device, ProgressEvent, VoiceInfo } from './tts/types'
 import type { Chunk } from './chunker'
-import { activeWordInChunk, chunkWordEndTimes } from './timing'
+import { activeWordInChunk, chunkWordEndTimes, wordStartTime } from './timing'
 import { playbackPlanKey } from './playbackPlanKey'
 
 export type PlayerStatus =
@@ -104,7 +104,9 @@ export function usePlayer({
   const playRequestedRef = useRef<boolean>(false)
   const lastEmittedWordRef = useRef<number>(-1)
   const playTokenRef = useRef(0)
-  const playChunkRef = useRef<(chunkIdx: number) => Promise<void>>(async () => {})
+  const playChunkRef = useRef<(chunkIdx: number, startWordIdx?: number) => Promise<void>>(
+    async () => {},
+  )
   /** Restart word-highlight + end-detection after pause/resume. */
   const resumeTickRef = useRef<(() => void) | null>(null)
   const mountedRef = useRef(true)
@@ -524,7 +526,7 @@ export function usePlayer({
   )
 
   const playChunk = useCallback(
-    async (chunkIdx: number): Promise<void> => {
+    async (chunkIdx: number, startWordIdx?: number): Promise<void> => {
       const token = playTokenRef.current
       const all = optionsRef.current.chunks
       if (chunkIdx >= all.length) {
@@ -591,10 +593,26 @@ export function usePlayer({
         return
       }
 
-      const chunk = all[chunkIdx]
+      const chunk = all[chunkIdx]!
       const ends = chunkWordEndTimes(chunk, result.durationSec)
       // Prefer TTS-reported duration — blob audio.duration is often NaN/Infinity.
       const clipDuration = Math.max(0.05, result.durationSec)
+
+      if (
+        startWordIdx != null &&
+        startWordIdx >= chunk.startWordIdx &&
+        startWordIdx < chunk.endWordIdx
+      ) {
+        const localIdx = startWordIdx - chunk.startWordIdx
+        const t0 = wordStartTime(ends, localIdx)
+        try {
+          audio.currentTime = Math.min(Math.max(0, t0), Math.max(0, clipDuration - 0.05))
+        } catch {
+          // Some browsers reject currentTime before metadata; ignore.
+        }
+        emitActive(startWordIdx)
+      }
+
       let advanced = false
 
       const scheduleBackup = (remainingSec: number) => {
@@ -645,7 +663,8 @@ export function usePlayer({
         rafRef.current = requestAnimationFrame(tick)
       }
 
-      scheduleBackup(clipDuration)
+      const remainingAtStart = Math.max(0.05, clipDuration - (audio.currentTime || 0))
+      scheduleBackup(remainingAtStart)
 
       audio.onended = () => {
         advanceToNext()
@@ -792,7 +811,7 @@ export function usePlayer({
 
       playRequestedRef.current = true
       safeSetStatus('playing')
-      void playChunk(chunkIdx)
+      void playChunk(chunkIdx, wIdx)
     },
     [init, playChunk, unlockAudio, releaseAudio, safeSetStatus, safeSetError, safeSetCurrentChunkIdx],
   )

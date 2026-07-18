@@ -44,6 +44,8 @@ type Props = {
   reactNode: ReactNode
   /** Bumps word-element remapping when the underlying parse changes. */
   parseKey: string | number
+  /** Global word indices that should show the bookmark marker. */
+  bookmarkWordIdxs?: ReadonlySet<number>
   onWordClick?: (wIdx: number) => void
   /**
    * Right-click / long-press on the preview. Caller should open a context menu;
@@ -164,6 +166,7 @@ export const MarkdownReader = forwardRef<MarkdownReaderHandle, Props>(function M
   {
     reactNode,
     parseKey,
+    bookmarkWordIdxs,
     onWordClick,
     onContextMenuWord,
     className: classNameProp,
@@ -255,6 +258,14 @@ export const MarkdownReader = forwardRef<MarkdownReaderHandle, Props>(function M
       wordEls.current.clear()
     }
   }, [parseKey, reactNode, scheduleNotifyActiveInView])
+
+  useLayoutEffect(() => {
+    const set = bookmarkWordIdxs
+    wordEls.current.forEach((el, idx) => {
+      if (set?.has(idx)) el.classList.add('is-bookmark')
+      else el.classList.remove('is-bookmark')
+    })
+  }, [parseKey, reactNode, bookmarkWordIdxs])
 
   useEffect(() => {
     reducedMotionRef.current =

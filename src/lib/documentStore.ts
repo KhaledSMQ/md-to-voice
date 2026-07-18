@@ -1,3 +1,7 @@
+import { normalizeBookmarks, type DocumentBookmark } from './bookmarks'
+
+export type { DocumentBookmark }
+
 const DB_NAME = 'md-to-voice'
 const DB_VERSION = 1
 const STORE = 'documents'
@@ -25,6 +29,8 @@ export type StoredDocument = {
   lastPlayedAt: number
   /** Global word index to continue playback from the chunk that contains it. Omitted = start. */
   resumeWordIdx?: number
+  /** User bookmarks (newest-first). Omitted = none. */
+  bookmarks?: DocumentBookmark[]
   /** Cached on save for sidebar progress without re-parsing the list. */
   wordCount?: number
   lastWordGlobalIdx?: number
@@ -164,6 +170,8 @@ function normalizeDoc(raw: unknown): StoredDocument | null {
     const n = Math.floor(Number(d.lastWordGlobalIdx))
     if (Number.isFinite(n) && n >= 0) doc.lastWordGlobalIdx = n
   }
+  const bookmarks = normalizeBookmarks(d.bookmarks)
+  if (bookmarks) doc.bookmarks = bookmarks
   return doc
 }
 
@@ -322,6 +330,7 @@ export async function putDocument(
     title?: string
     markdown?: string
     resumeWordIdx?: number | null
+    bookmarks?: DocumentBookmark[] | null
     wordCount?: number
     lastWordGlobalIdx?: number
   },
@@ -345,6 +354,11 @@ export async function putDocument(
       d.resumeWordIdx = Math.floor(patch.resumeWordIdx)
     }
   }
+  if (Object.prototype.hasOwnProperty.call(patch, 'bookmarks')) {
+    const normalized = normalizeBookmarks(patch.bookmarks)
+    if (normalized) d.bookmarks = normalized
+    else delete d.bookmarks
+  }
   d.updatedAt = Date.now()
   await writeAll(all)
   return d
@@ -360,6 +374,20 @@ export async function putResumeOnly(id: string, wordIdx: number): Promise<void> 
   } else {
     d.resumeWordIdx = Math.floor(wordIdx)
   }
+  await writeAll(all)
+}
+
+/** Update only bookmarks; does not bump `updatedAt`. */
+export async function putBookmarksOnly(
+  id: string,
+  bookmarks: DocumentBookmark[],
+): Promise<void> {
+  const all = await readAll()
+  const d = all.find((x) => x.id === id)
+  if (!d) return
+  const normalized = normalizeBookmarks(bookmarks)
+  if (normalized) d.bookmarks = normalized
+  else delete d.bookmarks
   await writeAll(all)
 }
 
