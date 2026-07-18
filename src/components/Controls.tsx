@@ -1,5 +1,6 @@
-import { memo, useEffect, useRef, type RefObject } from 'react'
+import { memo, useEffect, useRef, useState, type RefObject } from 'react'
 import type { Device, VoiceInfo } from '../lib/tts/types'
+import { getVoiceAvatarMeta } from '../lib/voiceAvatars'
 import {
   useActiveWordIdx,
   type ActiveWordStore,
@@ -8,7 +9,7 @@ import {
 } from '../lib/usePlayer'
 import { AudioVisualizer } from './AudioVisualizer'
 import { VoiceCarousel } from './VoiceCarousel'
-import { MixControls } from './StudioMeters'
+import { MixSheet, MixTrigger } from './StudioMeters'
 
 type Props = {
   status: PlayerStatus
@@ -62,6 +63,8 @@ export const Controls = memo(function Controls({
   chunkReadyTick = 0,
 }: Props) {
   const activeWordIdx = useActiveWordIdx(activeWordStore)
+  const [showVoices, setShowVoices] = useState(false)
+  const [showMix, setShowMix] = useState(false)
   const isLoading = status === 'loading-model'
   const isPlaying = status === 'playing'
   const canPause = status === 'playing'
@@ -75,6 +78,10 @@ export const Controls = memo(function Controls({
   const ratioPct = Math.min(100, Math.max(0, ratio * 100))
   const isMuted = volume === 0
   const lastVolumeRef = useRef(volume > 0 ? volume : 0.85)
+  const voiceMeta = getVoiceAvatarMeta(
+    voice,
+    voices.find((v) => v.id === voice)?.name,
+  )
 
   useEffect(() => {
     if (volume > 0) lastVolumeRef.current = volume
@@ -108,14 +115,94 @@ export const Controls = memo(function Controls({
 
   return (
     <div className="studio-controls space-y-4">
-      {/* Stage */}
+      {/* Stage — flip between waveform and voice switcher */}
       <section className="studio-stage-block space-y-2" aria-label="Playback stage">
-        <AudioVisualizer
-          analyserRef={analyserRef}
-          playerStatus={status}
-          buffering={buffering}
-          variant="stage"
-        />
+        <div className={`studio-flip${showVoices ? ' is-flipped' : ''}`}>
+          <div className="studio-flip-inner">
+            <div
+              className="studio-flip-face studio-flip-front"
+              aria-hidden={showVoices || undefined}
+            >
+              <AudioVisualizer
+                analyserRef={analyserRef}
+                playerStatus={status}
+                buffering={buffering}
+                variant="stage"
+                className="studio-flip-visualizer"
+              />
+              <div
+                className={`studio-stage-toolbar${showMix ? ' is-hidden' : ''}`}
+                aria-hidden={showMix || undefined}
+              >
+                <button
+                  type="button"
+                  className="studio-flip-trigger"
+                  onClick={() => {
+                    setShowMix(false)
+                    setShowVoices(true)
+                  }}
+                  tabIndex={showVoices || showMix ? -1 : 0}
+                  title="Switch voice"
+                  aria-label={`Switch voice, current ${voiceMeta.label}`}
+                >
+                  <FlipIcon />
+                  <span className="studio-flip-trigger-label">{voiceMeta.label}</span>
+                </button>
+                <MixTrigger
+                  open={showMix}
+                  onToggle={() => setShowMix((v) => !v)}
+                  volume={volume}
+                  speed={speed}
+                  muted={isMuted}
+                  disabled={showVoices}
+                />
+              </div>
+              <MixSheet
+                open={showMix}
+                onClose={() => setShowMix(false)}
+                volume={volume}
+                onVolume={onVolume}
+                speed={speed}
+                onSpeed={onSpeed}
+                muted={isMuted}
+                onToggleMute={toggleMute}
+              />
+            </div>
+
+            <div
+              className="studio-flip-face studio-flip-back"
+              aria-hidden={!showVoices || undefined}
+            >
+              <div className="studio-flip-voice">
+                <div className="studio-flip-voice-bar">
+                  <span className="text-[10px] font-medium uppercase tracking-wider text-ink-500">
+                    Voice
+                  </span>
+                  <button
+                    type="button"
+                    className="studio-flip-trigger studio-flip-trigger-back"
+                    onClick={() => setShowVoices(false)}
+                    tabIndex={showVoices ? 0 : -1}
+                    title="Show waveform"
+                    aria-label="Show waveform"
+                  >
+                    <WaveIcon />
+                    <span className="studio-flip-trigger-label">Wave</span>
+                  </button>
+                </div>
+                <VoiceCarousel
+                  voices={voices}
+                  voice={voice}
+                  onVoice={onVoice}
+                  buffering={buffering}
+                  chunkReadyTick={chunkReadyTick}
+                  compact
+                  active={showVoices}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
         <div className="flex items-center justify-between gap-2 px-0.5">
           <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-ink-500">
             Console
@@ -194,51 +281,28 @@ export const Controls = memo(function Controls({
         </div>
       )}
 
-      {/* Meters */}
-      <section className="space-y-3" aria-label="Meters">
-        {showProgress && (
-          <div className="space-y-1">
-            <div className="flex items-center justify-between text-[10px] text-ink-400">
-              <span>Progress</span>
-              <span className="font-mono tabular-nums text-ink-300">
-                {heardOrdinal} / {totalWords}
-                {totalChunks > 1 && (
-                  <span className="text-ink-500">
-                    {' '}
-                    · {status === 'finished' ? totalChunks : chunkNumber}/{totalChunks}
-                  </span>
-                )}
-              </span>
-            </div>
-            <div className="studio-meter-track">
-              <div
-                className="studio-meter-fill"
-                style={{ width: `${status === 'finished' ? 100 : wordPct}%` }}
-              />
-            </div>
+      {showProgress && (
+        <section className="space-y-1" aria-label="Progress">
+          <div className="flex items-center justify-between text-[10px] text-ink-400">
+            <span>Progress</span>
+            <span className="font-mono tabular-nums text-ink-300">
+              {heardOrdinal} / {totalWords}
+              {totalChunks > 1 && (
+                <span className="text-ink-500">
+                  {' '}
+                  · {status === 'finished' ? totalChunks : chunkNumber}/{totalChunks}
+                </span>
+              )}
+            </span>
           </div>
-        )}
-
-        <MixControls
-          volume={volume}
-          onVolume={onVolume}
-          speed={speed}
-          onSpeed={onSpeed}
-          muted={isMuted}
-          onToggleMute={toggleMute}
-        />
-      </section>
-
-      {/* Instruments — tucked away while listening on small screens */}
-      <section className="studio-instruments" aria-label="Instruments">
-        <VoiceCarousel
-          voices={voices}
-          voice={voice}
-          onVoice={onVoice}
-          buffering={buffering}
-          chunkReadyTick={chunkReadyTick}
-        />
-      </section>
+          <div className="studio-meter-track">
+            <div
+              className="studio-meter-fill"
+              style={{ width: `${status === 'finished' ? 100 : wordPct}%` }}
+            />
+          </div>
+        </section>
+      )}
 
       {isError && error && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
@@ -300,6 +364,24 @@ function SpinnerIcon() {
     >
       <circle cx="12" cy="12" r="9" opacity="0.25" />
       <path d="M21 12a9 9 0 0 0-9-9" />
+    </svg>
+  )
+}
+
+function FlipIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width={12} height={12} fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M16 3h5v5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8 21H3v-5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M21 3 14 10M3 21l7-7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function WaveIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width={12} height={12} fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M3 12c2-4 4-4 6 0s4 4 6 0 4-4 6 0" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }

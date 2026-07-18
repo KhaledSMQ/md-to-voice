@@ -13,6 +13,10 @@ type Props = {
   buffering?: boolean
   /** Increments when a chunk finishes generating — triggers the ready flash. */
   chunkReadyTick?: number
+  /** Tighter layout for the stage flip face. */
+  compact?: boolean
+  /** When false, carousel is on the hidden flip face — reInit on reveal. */
+  active?: boolean
 }
 
 const TWEEN_FACTOR_BASE = 0.58
@@ -30,6 +34,8 @@ export const VoiceCarousel = memo(function VoiceCarousel({
   onVoice,
   buffering = false,
   chunkReadyTick = 0,
+  compact = false,
+  active = true,
 }: Props) {
   const catalogReady = voices.length > 0
   const slides = useMemo(() => {
@@ -205,6 +211,13 @@ export const VoiceCarousel = memo(function VoiceCarousel({
     emblaApi?.reInit()
   }, [emblaApi, slides.length])
 
+  // Flip face becomes visible — remeasure slides after 3D transform settles.
+  useEffect(() => {
+    if (!emblaApi || !active) return
+    const id = window.requestAnimationFrame(() => emblaApi.reInit())
+    return () => window.cancelAnimationFrame(id)
+  }, [emblaApi, active])
+
   const selected = slides.find((v) => v.id === voice) ?? slides[0] ?? null
   const selectedMeta = selected ? getVoiceAvatarMeta(selected.id, selected.name) : null
 
@@ -213,21 +226,23 @@ export const VoiceCarousel = memo(function VoiceCarousel({
 
   return (
     <div
-      className={`voice-carousel${catalogReveal ? ' is-catalog-ready' : ''}${catalogReady ? ' has-catalog' : ''}${buffering ? ' is-buffering' : ''}`}
+      className={`voice-carousel${compact ? ' is-compact' : ''}${catalogReveal ? ' is-catalog-ready' : ''}${catalogReady ? ' has-catalog' : ''}${buffering ? ' is-buffering' : ''}`}
       role="group"
       aria-label="Voice"
       aria-busy={buffering || undefined}
     >
-      <div className="mb-1.5 flex items-center justify-between gap-2 px-0.5">
-        <span className="text-[10px] font-medium uppercase tracking-wider text-ink-500">Voice</span>
-        {selected && (
-          <span className="truncate text-[10px] text-ink-500">
-            {selectedMeta?.label}
-            {selected.gender ? ` · ${selected.gender === 'Female' ? 'F' : 'M'}` : ''}
-            {selected.traits ? ` · ${selected.traits}` : ''}
-          </span>
-        )}
-      </div>
+      {!compact && (
+        <div className="mb-1.5 flex items-center justify-between gap-2 px-0.5">
+          <span className="text-[10px] font-medium uppercase tracking-wider text-ink-500">Voice</span>
+          {selected && (
+            <span className="truncate text-[10px] text-ink-500">
+              {selectedMeta?.label}
+              {selected.gender ? ` · ${selected.gender === 'Female' ? 'F' : 'M'}` : ''}
+              {selected.traits ? ` · ${selected.traits}` : ''}
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="voice-carousel-shell">
         <button
@@ -235,7 +250,8 @@ export const VoiceCarousel = memo(function VoiceCarousel({
           className="voice-carousel-nav"
           onClick={scrollPrev}
           aria-label="Previous voice"
-          disabled={slides.length < 2}
+          disabled={slides.length < 2 || !active}
+          tabIndex={active ? 0 : -1}
         >
           <ChevronLeft />
         </button>
@@ -265,6 +281,7 @@ export const VoiceCarousel = memo(function VoiceCarousel({
                     }}
                     aria-pressed={isSelected}
                     aria-label={`${meta.label}${v.gender ? `, ${v.gender}` : ''}`}
+                    tabIndex={active ? 0 : -1}
                   >
                     <VoiceAvatar
                       icon={meta.icon}
@@ -272,6 +289,7 @@ export const VoiceCarousel = memo(function VoiceCarousel({
                       to={meta.to}
                       accent={meta.accent}
                       label={meta.label}
+                      size={compact ? 'md' : 'lg'}
                       selected={isSelected}
                       justArrived={isSelected && arriveBurst}
                       synthesizing={isSelected && buffering}
@@ -290,13 +308,14 @@ export const VoiceCarousel = memo(function VoiceCarousel({
           className="voice-carousel-nav"
           onClick={scrollNext}
           aria-label="Next voice"
-          disabled={slides.length < 2}
+          disabled={slides.length < 2 || !active}
+          tabIndex={active ? 0 : -1}
         >
           <ChevronRight />
         </button>
       </div>
 
-      {selected?.traits ? (
+      {!compact && selected?.traits ? (
         <p className="mt-1.5 truncate px-0.5 text-center text-[10px] text-ink-500">{selected.traits}</p>
       ) : null}
     </div>

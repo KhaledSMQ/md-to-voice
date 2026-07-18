@@ -1090,12 +1090,21 @@ body {
     overflow: hidden;
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.08);
+    container-type: inline-size;
   }
 
   .mini-transport-meter-fill {
     height: 100%;
     border-radius: inherit;
-    background: linear-gradient(90deg, rgba(252, 211, 77, 0.75), rgba(244, 114, 182, 0.8));
+    background: linear-gradient(
+      90deg,
+      rgba(52, 211, 153, 0.8) 0%,
+      rgba(252, 211, 77, 0.9) 48%,
+      rgba(251, 146, 60, 0.9) 78%,
+      rgba(244, 114, 182, 0.85) 100%
+    );
+    background-size: 100cqw 100%;
+    background-repeat: no-repeat;
     transition: width 280ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
@@ -1244,11 +1253,14 @@ body {
   .focus-mini-player .mini-transport-meter-fill {
     background: linear-gradient(
       90deg,
-      rgba(253, 230, 138, 0.95),
-      rgba(252, 211, 77, 0.9) 55%,
-      rgba(251, 191, 36, 0.85)
+      rgba(52, 211, 153, 0.85) 0%,
+      rgba(252, 211, 77, 0.95) 48%,
+      rgba(251, 146, 60, 0.9) 78%,
+      rgba(244, 114, 182, 0.85) 100%
     );
-    box-shadow: 0 0 10px rgba(252, 211, 77, 0.35);
+    background-size: 100cqw 100%;
+    background-repeat: no-repeat;
+    box-shadow: 0 0 10px rgba(252, 211, 77, 0.28);
   }
 
   .focus-mini-player .mini-transport-row {
@@ -1353,6 +1365,101 @@ body {
     }
   }
 
+  /* Stage flip: waveform ↔ voice switcher */
+  .studio-flip {
+    perspective: 1400px;
+  }
+
+  .studio-flip-inner {
+    position: relative;
+    height: 11rem;
+    transform-style: preserve-3d;
+    transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  @media (min-width: 1024px) {
+    .studio-flip-inner {
+      height: 12rem;
+    }
+  }
+
+  .studio-flip.is-flipped .studio-flip-inner {
+    transform: rotateY(180deg);
+  }
+
+  .studio-flip-face {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    border-radius: 1rem;
+  }
+
+  .studio-flip-front {
+    z-index: 1;
+  }
+
+  .studio-flip-back {
+    transform: rotateY(180deg);
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .studio-flip.is-flipped .studio-flip-front {
+    pointer-events: none;
+  }
+
+  .studio-flip.is-flipped .studio-flip-back {
+    pointer-events: auto;
+    z-index: 1;
+  }
+
+  .studio-flip-visualizer {
+    height: 100%;
+  }
+
+  .studio-stage-toolbar {
+    @apply absolute left-2.5 top-2.5 z-30 flex max-w-[calc(100%-5.5rem)] items-start gap-1.5 transition-[opacity,transform] duration-200;
+  }
+
+  .studio-stage-toolbar.is-hidden {
+    @apply pointer-events-none opacity-0;
+    transform: translateY(-4px);
+  }
+
+  .studio-flip-trigger {
+    @apply relative z-10 inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border border-white/10 bg-ink-950/70 px-2 py-0.5 text-[10px] font-medium text-ink-200 backdrop-blur-md transition-colors hover:border-white/20 hover:bg-ink-950/85 hover:text-ink-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50;
+  }
+
+  .studio-flip-trigger-label {
+    @apply min-w-0 truncate;
+  }
+
+  .studio-flip-trigger-back {
+    @apply static max-w-none shrink-0;
+  }
+
+  .studio-flip-voice {
+    @apply flex h-full flex-col justify-center rounded-2xl border border-white/[0.08] bg-gradient-to-b from-ink-950 via-[#0a101c] to-ink-900/60 px-2.5 py-2 shadow-inner shadow-ink-950/90;
+  }
+
+  .studio-flip-voice-bar {
+    @apply mb-1 flex items-center justify-between gap-2 px-0.5;
+  }
+
+  .voice-carousel.is-compact .voice-carousel-scale {
+    @apply gap-1 px-0.5 py-1;
+  }
+
+  .voice-carousel.is-compact .voice-carousel-name {
+    @apply text-[10px];
+  }
+
+  .voice-carousel.is-compact .voice-carousel-slide {
+    flex-basis: 38%;
+  }
+
   .studio-transport {
     @apply flex items-center gap-1.5;
   }
@@ -1408,92 +1515,233 @@ body {
 
   .studio-meter-track {
     @apply h-1 w-full overflow-hidden rounded-full bg-white/5;
+    container-type: inline-size;
   }
 
   .studio-meter-fill {
-    @apply h-full rounded-full bg-gradient-to-r from-amber-400/70 via-amber-300 to-pink-400/80;
+    @apply h-full rounded-full;
+    /* Quiet → nominal → hot — gradient spans the full track, fill reveals it. */
+    background: linear-gradient(
+      90deg,
+      rgba(52, 211, 153, 0.85) 0%,
+      rgba(252, 211, 77, 0.95) 48%,
+      rgba(251, 146, 60, 0.95) 78%,
+      rgba(244, 114, 182, 0.9) 100%
+    );
+    background-size: 100cqw 100%;
+    background-repeat: no-repeat;
     transition: width 320ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
-  /* —— Mix (volume + speed, collapsed by default) —— */
-  .studio-mix {
-    @apply rounded-lg border border-transparent;
+  /* —— Mix cover (full stage card) —— */
+  .studio-mix-trigger {
+    @apply inline-flex shrink-0 items-center gap-1.5 rounded-full border border-white/10 bg-ink-950/70 px-2 py-0.5 text-[10px] font-medium text-ink-200 backdrop-blur-md transition-[border-color,background-color,color,box-shadow,transform] duration-200 hover:border-white/20 hover:bg-ink-950/85 hover:text-ink-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50 disabled:pointer-events-none disabled:opacity-40 active:scale-[0.97];
   }
 
-  .studio-mix.is-open {
-    @apply border-white/10 bg-white/[0.02];
+  .studio-mix-trigger-icon {
+    @apply inline-flex shrink-0;
   }
 
-  .studio-mix-summary {
-    @apply flex items-center gap-1.5;
+  .studio-mix-trigger.is-muted {
+    @apply border-amber-300/40 bg-amber-300/10 text-amber-100;
   }
 
-  .studio-mix-mute {
-    @apply inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-ink-300 transition-colors hover:border-white/20 hover:bg-white/[0.08] hover:text-ink-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50;
+  .studio-mix-trigger.is-open {
+    @apply border-amber-300/35 bg-amber-300/10 text-amber-50;
   }
 
-  .studio-mix-mute.is-muted {
-    @apply border-amber-300/40 bg-amber-300/10 text-amber-200;
+  .studio-mix-trigger-label {
+    @apply inline-flex items-center gap-1 font-mono tabular-nums;
   }
 
-  .studio-mix-summary-btn {
-    @apply flex min-w-0 flex-1 items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-left transition-colors hover:border-white/20 hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50;
-  }
-
-  .studio-mix.is-open .studio-mix-summary-btn {
-    @apply border-white/15 bg-white/[0.05];
-  }
-
-  .studio-mix-summary-text {
-    @apply flex min-w-0 items-center gap-1.5 truncate text-[12px] text-ink-200;
-  }
-
-  .studio-mix-dot {
+  .studio-mix-trigger-dot {
     @apply text-ink-600;
   }
 
-  .studio-mix-summary-hint {
-    @apply shrink-0 text-[10px] uppercase tracking-wider text-ink-500;
+  .studio-mix-sheet {
+    @apply pointer-events-none absolute inset-0 z-20 overflow-hidden rounded-2xl;
   }
 
-  .studio-mix-panel {
-    @apply space-y-3 border-t border-white/[0.06] px-2.5 pb-2.5 pt-3;
+  .studio-mix-sheet-panel {
+    @apply absolute inset-0 flex flex-col px-3.5 pb-3.5 pt-3;
+    background:
+      radial-gradient(ellipse 90% 60% at 20% 0%, rgba(252, 211, 77, 0.07), transparent 50%),
+      radial-gradient(ellipse 80% 50% at 90% 100%, rgba(244, 114, 182, 0.06), transparent 45%),
+      linear-gradient(180deg, rgba(10, 16, 28, 0.97) 0%, rgba(8, 12, 22, 0.98) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: inherit;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(18px) saturate(1.15);
+    -webkit-backdrop-filter: blur(18px) saturate(1.15);
+    transform: translateY(10%);
+    opacity: 0;
+    transition:
+      transform 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 0.28s ease;
+    pointer-events: none;
   }
 
-  .studio-mix-field {
-    @apply space-y-1.5;
+  .studio-mix-sheet.is-open {
+    @apply pointer-events-auto;
   }
 
-  .studio-mix-field-head {
-    @apply flex items-center justify-between gap-2;
+  .studio-mix-sheet.is-open .studio-mix-sheet-panel {
+    transform: translateY(0);
+    opacity: 1;
+    pointer-events: auto;
   }
 
-  .studio-mix-field-label {
-    @apply text-[10px] font-medium uppercase tracking-wider text-ink-500;
+  .studio-mix-sheet-head {
+    @apply mb-3 flex shrink-0 items-center justify-between gap-2;
   }
 
-  .studio-mix-field-value {
-    @apply text-[11px] font-mono text-ink-300;
+  .studio-mix-sheet-heading {
+    @apply flex min-w-0 items-baseline gap-2;
   }
 
-  .studio-mix-chips {
-    @apply flex items-center gap-1 pt-0.5;
+  .studio-mix-sheet-title {
+    @apply text-[10px] font-medium uppercase tracking-[0.16em] text-ink-500;
   }
 
-  .studio-mix-chip {
-    @apply rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-[10px] font-medium text-ink-300 transition-colors hover:border-white/20 hover:bg-white/[0.06] hover:text-ink-100 focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-300/50;
+  .studio-mix-sheet-summary {
+    @apply font-mono text-[11px] text-ink-300;
   }
 
-  .studio-mix-chip.is-active {
-    @apply border-amber-300/40 bg-amber-300/10 text-amber-50;
+  .studio-mix-sheet-summary-dot {
+    @apply mx-1 text-ink-600;
   }
 
-  .studio-mix-done {
-    @apply w-full rounded-lg border border-white/10 bg-white/[0.04] py-1.5 text-[11px] font-medium text-ink-300 transition-colors hover:border-white/20 hover:bg-white/[0.07] hover:text-ink-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50;
+  .studio-mix-sheet-close {
+    @apply inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-ink-400 transition-[background-color,border-color,color,transform] duration-150 hover:border-white/20 hover:bg-white/[0.08] hover:text-ink-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50 active:scale-95;
   }
 
-  .studio-instruments {
-    @apply space-y-2.5 border-t border-white/[0.06] pt-3;
+  .studio-mix-sheet-body {
+    @apply flex min-h-0 flex-1 flex-col justify-center gap-0;
+  }
+
+  .studio-mix-block {
+    @apply space-y-2 py-1;
+  }
+
+  .studio-mix-sheet.is-open .studio-mix-block {
+    animation: studio-mix-block-in 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: calc(var(--mix-i, 0) * 55ms + 60ms);
+  }
+
+  @keyframes studio-mix-block-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .studio-mix-divider {
+    @apply my-2.5 h-px w-full;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.1) 20%,
+      rgba(255, 255, 255, 0.1) 80%,
+      transparent
+    );
+  }
+
+  .studio-mix-block-head {
+    @apply flex items-center justify-between gap-2 px-0.5;
+  }
+
+  .studio-mix-block-label {
+    @apply inline-flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-ink-500;
+  }
+
+  .studio-mix-block-value {
+    @apply font-mono text-[11px] text-ink-200;
+  }
+
+  .studio-mix-block-row {
+    @apply flex items-center gap-1.5;
+  }
+
+  .studio-mix-btn {
+    @apply inline-flex h-8 w-8 shrink-0 touch-none items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-[14px] font-medium leading-none text-ink-300 transition-[background-color,border-color,color,transform] duration-150 hover:border-white/20 hover:bg-white/[0.08] hover:text-ink-50 disabled:cursor-not-allowed disabled:opacity-35 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50 active:scale-95 select-none;
+  }
+
+  .studio-mix-mute.is-muted {
+    @apply border-amber-300/40 bg-amber-300/10 text-amber-100;
+  }
+
+  .studio-mix-meter {
+    @apply relative h-8 min-w-0 flex-1 cursor-ew-resize touch-none rounded-full border border-white/10 bg-white/[0.04] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50;
+    container-type: inline-size;
+  }
+
+  .studio-mix-meter.is-muted {
+    @apply opacity-55;
+  }
+
+  .studio-mix-meter-fill {
+    @apply absolute top-1/2 left-[7px] h-[6px] -translate-y-1/2 rounded-full;
+    background: linear-gradient(
+      90deg,
+      rgba(52, 211, 153, 0.95) 0%,
+      rgba(252, 211, 77, 0.95) 48%,
+      rgba(251, 146, 60, 0.95) 78%,
+      rgba(244, 114, 182, 0.95) 100%
+    );
+    background-size: calc(100cqw - 14px) 100%;
+    background-repeat: no-repeat;
+    box-shadow: 0 0 12px -2px rgba(252, 211, 77, 0.35);
+    transition: width 100ms ease;
+  }
+
+  .studio-mix-meter:active .studio-mix-meter-fill,
+  .studio-mix-meter:active .studio-mix-meter-thumb {
+    transition: none;
+  }
+
+  .studio-mix-meter-thumb {
+    @apply pointer-events-none absolute top-1/2 z-[1] h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-ink-950;
+    background: #fde68a;
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+    transition: left 100ms ease;
+  }
+
+  .studio-mix-presets {
+    @apply flex min-w-0 flex-1 items-center gap-0.5 rounded-full border border-white/10 bg-white/[0.03] p-0.5;
+  }
+
+  .studio-mix-preset {
+    @apply min-w-0 flex-1 rounded-full px-1 py-1.5 font-mono text-[11px] font-medium text-ink-400 transition-[background-color,color,transform] duration-150 hover:text-ink-100 focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-300/50 active:scale-[0.97];
+  }
+
+  .studio-mix-preset.is-active {
+    @apply bg-amber-300/15 text-amber-50;
+    box-shadow: inset 0 0 0 1px rgba(252, 211, 77, 0.28);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .studio-mix-sheet-panel,
+    .studio-mix-meter-fill,
+    .studio-mix-meter-thumb,
+    .studio-stage-toolbar {
+      transition: none;
+    }
+
+    .studio-mix-sheet.is-open .studio-mix-block {
+      animation: none;
+    }
+
+    .studio-mix-sheet-panel {
+      transform: none;
+    }
+
+    .studio-mix-sheet:not(.is-open) .studio-mix-sheet-panel {
+      display: none;
+    }
   }
 
   .voice-carousel-shell {
@@ -1802,6 +2050,32 @@ body {
     .studio-stage.is-buffering,
     .voice-carousel.is-catalog-ready .voice-carousel-slide {
       animation: none;
+    }
+
+    .studio-flip-inner {
+      transition: none;
+    }
+
+    .studio-flip.is-flipped .studio-flip-inner {
+      transform: none;
+    }
+
+    .studio-flip-front,
+    .studio-flip-back {
+      transition: opacity 0.2s ease;
+    }
+
+    .studio-flip.is-flipped .studio-flip-front {
+      opacity: 0;
+    }
+
+    .studio-flip:not(.is-flipped) .studio-flip-back {
+      opacity: 0;
+    }
+
+    .studio-flip.is-flipped .studio-flip-back {
+      transform: none;
+      opacity: 1;
     }
 
     .studio-meter-fill,

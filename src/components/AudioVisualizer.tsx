@@ -12,11 +12,11 @@ type Props = {
   variant?: 'default' | 'stage'
 }
 
-/** Amber / pink / sky palette to match the app shell. */
+/** Warm level continuum — amber → orange → rose (no unrelated hues). */
 const CURVE_DEFINITION: IiOS9CurveDefinition[] = [
   { color: '252, 211, 77' },
+  { color: '251, 146, 60' },
   { color: '244, 114, 182' },
-  { color: '56, 189, 248' },
   { supportLine: true, color: '255, 255, 255' },
 ]
 
@@ -285,14 +285,14 @@ export function AudioVisualizer({
       className={
         `group relative overflow-hidden bg-gradient-to-b from-ink-950 via-[#0a101c] to-ink-900/60 shadow-inner shadow-ink-950/90 ` +
         (isStage
-          ? `studio-stage rounded-2xl border border-white/[0.08] ${isPlaying || buffering ? 'is-live' : ''}${buffering ? ' is-buffering' : ''}`
+          ? `studio-stage h-full rounded-2xl border border-white/[0.08] ${isPlaying || buffering ? 'is-live' : ''}${buffering ? ' is-buffering' : ''}`
           : 'rounded-xl border border-white/[0.07]') +
         (className ? ` ${className}` : '')
       }
     >
       {reducedMotion ? (
         <div
-          className={`flex w-full items-center justify-center ${isStage ? 'h-20 lg:h-28' : 'h-20 sm:h-24'}`}
+          className={`flex w-full items-center justify-center ${isStage ? 'h-full min-h-20 lg:min-h-28' : 'h-20 sm:h-24'}`}
           aria-hidden
         >
           <div className="h-px w-3/4 bg-gradient-to-r from-transparent via-white/25 to-transparent" />
@@ -302,18 +302,18 @@ export function AudioVisualizer({
           ref={containerRef}
           className={
             `w-full transition-opacity duration-500 ${isLive || buffering ? 'opacity-100' : 'opacity-70'} ` +
-            (isStage ? 'h-20 lg:h-28' : 'h-20 sm:h-32')
+            (isStage ? 'h-full min-h-20 lg:min-h-28' : 'h-20 sm:h-32')
           }
           aria-hidden
         />
       )}
 
       <div
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_20%_50%,rgba(252,211,77,0.12),transparent_55%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_25%_50%,rgba(252,211,77,0.12),transparent_55%)]"
         aria-hidden
       />
       <div
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_80%_50%,rgba(244,114,182,0.1),transparent_55%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_70%_55%_at_75%_50%,rgba(251,146,60,0.1),transparent_55%)]"
         aria-hidden
       />
       <div
