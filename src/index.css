@@ -976,23 +976,6 @@ body {
       linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0%, transparent 28%);
   }
 
-  .studio-deck-scroll {
-    scrollbar-gutter: stable;
-  }
-
-  .studio-deck-scroll::-webkit-scrollbar {
-    width: 8px;
-  }
-
-  .studio-deck-scroll::-webkit-scrollbar-thumb {
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.12);
-  }
-
-  .studio-deck-scroll::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.2);
-  }
-
   /* —— Mobile studio sheet (peek mini-player → expandable console) —— */
   .mobile-studio {
     pointer-events: none;
@@ -1720,6 +1703,8 @@ body {
   .studio-shelf {
     display: grid;
     grid-template-rows: 1fr;
+    flex: 1 1 auto;
+    min-height: 0;
     margin-top: 1rem;
     border-top: 1px solid rgba(255, 255, 255, 0.06);
     padding-top: 0.75rem;
@@ -1738,10 +1723,15 @@ body {
   }
 
   .studio-shelf-inner {
-    @apply space-y-2.5;
+    @apply flex h-full min-h-0 flex-col gap-2.5;
+  }
+
+  .studio-shelf-inner > :not(.library-section) {
+    flex-shrink: 0;
   }
 
   .studio-shelf.is-collapsed {
+    flex: 0 0 auto;
     grid-template-rows: 0fr;
     margin-top: 0;
     padding-top: 0;
@@ -1750,10 +1740,51 @@ body {
     pointer-events: none;
   }
 
-  /* Library grows with the sidebar; only the deck scrollport scrolls. */
+  /* Only the document rows scroll; chrome above stays put. */
   .library-list {
-    max-height: none;
-    overflow: visible;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    /* Soft edge dissolve when more content is available (set by .has-fade-*). */
+    --library-fade-top: 0px;
+    --library-fade-bottom: 0px;
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      #000 var(--library-fade-top),
+      #000 calc(100% - var(--library-fade-bottom)),
+      transparent 100%
+    );
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      #000 var(--library-fade-top),
+      #000 calc(100% - var(--library-fade-bottom)),
+      transparent 100%
+    );
+  }
+
+  .library-scroll.has-fade-top .library-list {
+    --library-fade-top: 1.5rem;
+  }
+
+  .library-scroll.has-fade-bottom .library-list {
+    --library-fade-bottom: 1.5rem;
+  }
+
+  .library-list::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .library-list::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.14);
+  }
+
+  .library-list::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.22);
   }
 
   .library-item {

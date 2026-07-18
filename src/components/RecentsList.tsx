@@ -71,6 +71,8 @@ export function RecentsList({
   const sortMenuWrapRef = useRef<HTMLDivElement>(null)
   const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string } | null>(null)
   const deleteCancelRef = useRef<HTMLButtonElement>(null)
+  const libraryListRef = useRef<HTMLUListElement>(null)
+  const [scrollFade, setScrollFade] = useState({ top: false, bottom: false })
 
   const recentsVisible = useMemo(() => {
     const q = recentsSearch.trim().toLowerCase()
@@ -119,6 +121,33 @@ export function RecentsList({
       document.removeEventListener('keydown', onKey)
     }
   }, [pendingDelete])
+
+  useEffect(() => {
+    const el = libraryListRef.current
+    if (!el) {
+      setScrollFade({ top: false, bottom: false })
+      return
+    }
+
+    const EDGE = 2
+    const update = () => {
+      const { scrollTop, scrollHeight, clientHeight } = el
+      const overflow = scrollHeight - clientHeight > EDGE
+      setScrollFade({
+        top: overflow && scrollTop > EDGE,
+        bottom: overflow && scrollTop + clientHeight < scrollHeight - EDGE,
+      })
+    }
+
+    update()
+    el.addEventListener('scroll', update, { passive: true })
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => {
+      el.removeEventListener('scroll', update)
+      ro.disconnect()
+    }
+  }, [recentsVisible.length, recentsSearch, recentsSort])
 
   const deleteDialog =
     pendingDelete &&
@@ -175,27 +204,41 @@ export function RecentsList({
 
   return (
     <>
-      <section className="library-section space-y-2" aria-labelledby="recents-heading">
-        <div className="flex items-center justify-between gap-2">
+      <section
+        className="library-section flex min-h-0 flex-1 flex-col gap-2"
+        aria-labelledby="recents-heading"
+      >
+        <div className="flex shrink-0 items-center justify-between gap-2">
           <h2
             id="recents-heading"
-            className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-500"
+            className="flex min-w-0 items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-500"
           >
-            <IconStack className="h-3 w-3 text-ink-400" />
+            <IconStack className="h-3 w-3 shrink-0 text-ink-400" />
             Library
           </h2>
-          <button
-            type="button"
-            onClick={onNewDocument}
-            className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-ink-300 transition hover:bg-amber-300/10 hover:text-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50"
-          >
-            <IconPlus className="h-3 w-3" />
-            New
-          </button>
+          <div className="flex shrink-0 items-center gap-0.5">
+            <button
+              type="button"
+              onClick={onOpenFile}
+              title="Open Markdown"
+              className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-ink-300 transition hover:bg-amber-300/10 hover:text-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50"
+            >
+              <IconUpload className="h-3 w-3" />
+              Open
+            </button>
+            <button
+              type="button"
+              onClick={onNewDocument}
+              className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-ink-300 transition hover:bg-amber-300/10 hover:text-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50"
+            >
+              <IconPlus className="h-3 w-3" />
+              New
+            </button>
+          </div>
         </div>
 
         {documents.length > 0 && (
-          <div className="flex min-w-0 items-center gap-1.5">
+          <div className="flex min-w-0 shrink-0 items-center gap-1.5">
             <div className="relative min-w-0 flex-1">
               <label htmlFor="recents-search" className="sr-only">
                 Search library
@@ -278,7 +321,7 @@ export function RecentsList({
           <div className="px-1 py-3 text-center">
             <p className="text-xs text-ink-400">No saved documents</p>
             <p className="mt-1 text-[11px] text-ink-500 leading-relaxed">
-              Drop a <span className="text-ink-300">.md</span> onto the window, or open one above.
+              Drop a <span className="text-ink-300">.md</span> onto the window, or use Open.
             </p>
             <button
               type="button"
@@ -297,101 +340,115 @@ export function RecentsList({
             </p>
           </div>
         ) : (
-          <ul
-            className="studio-shelf-list library-list space-y-0.5"
-            aria-label="Document history"
+          <div
+            className={
+              'library-scroll relative min-h-0 flex-1' +
+              (scrollFade.top ? ' has-fade-top' : '') +
+              (scrollFade.bottom ? ' has-fade-bottom' : '')
+            }
           >
-            {recentsVisible.map((d) => {
-              const isActive = d.id === activeId
-              const displayTitle = d.id === activeId ? title : d.title
-              const rv = resumeViewFromStore(d)
-              const when = d.lastPlayedAt
-                ? `Played ${formatWhen(d.lastPlayedAt)}`
-                : `Saved ${formatWhen(d.updatedAt)}`
-              let resumeLabel: string | null
-              if (rv.showBar) {
-                resumeLabel = `~${rv.pct}%`
-              } else {
-                resumeLabel =
-                  'hint' in rv && rv.hint === 'stale' && d.resumeWordIdx && d.resumeWordIdx > 0
-                    ? 'Resume'
-                    : null
-              }
-              const progressPct = rv.showBar ? rv.pct : 0
-              return (
-                <li key={d.id} className="group">
-                  <div
-                    className={
-                      'library-item flex items-stretch gap-0.5 rounded-lg transition-colors ' +
-                      (isActive
-                        ? 'is-active bg-amber-300/[0.09] ring-1 ring-inset ring-amber-300/30'
-                        : 'hover:bg-white/[0.04]')
-                    }
-                  >
-                    <button
-                      type="button"
-                      onClick={() => onSelectDocument(d.id)}
-                      className="min-w-0 flex-1 rounded-lg px-2.5 py-2 pr-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-300/40"
-                      title={d.title}
+            <ul
+              ref={libraryListRef}
+              className="studio-shelf-list library-list h-full space-y-0.5 overflow-y-auto overscroll-contain pr-0.5"
+              aria-label="Document history"
+            >
+              {recentsVisible.map((d) => {
+                const isActive = d.id === activeId
+                const displayTitle = d.id === activeId ? title : d.title
+                const rv = resumeViewFromStore(d)
+                const when = d.lastPlayedAt
+                  ? `Played ${formatWhen(d.lastPlayedAt)}`
+                  : `Saved ${formatWhen(d.updatedAt)}`
+                let resumeLabel: string | null
+                if (rv.showBar) {
+                  resumeLabel = `~${rv.pct}%`
+                } else {
+                  resumeLabel =
+                    'hint' in rv && rv.hint === 'stale' && d.resumeWordIdx && d.resumeWordIdx > 0
+                      ? 'Resume'
+                      : null
+                }
+                const progressPct = rv.showBar ? rv.pct : 0
+                return (
+                  <li key={d.id} className="group">
+                    <div
+                      className={
+                        'library-item flex items-stretch gap-0.5 rounded-lg transition-colors ' +
+                        (isActive
+                          ? 'is-active bg-amber-300/[0.09] ring-1 ring-inset ring-amber-300/30'
+                          : 'hover:bg-white/[0.04]')
+                      }
                     >
-                      <div
-                        className={
-                          'truncate font-mono text-[11px] leading-snug ' +
-                          (isActive ? 'text-amber-100' : 'text-ink-100')
-                        }
+                      <button
+                        type="button"
+                        onClick={() => onSelectDocument(d.id)}
+                        className="min-w-0 flex-1 rounded-lg px-2.5 py-2 pr-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-300/40"
+                        title={d.title}
                       >
-                        {displayTitle}
-                      </div>
-                      <div className="mt-1 flex min-w-0 items-center gap-x-1.5 text-[9px] leading-none text-ink-500">
-                        <span className="inline-flex min-w-0 items-center gap-0.5 truncate">
-                          <IconClock className="h-2.5 w-2.5 shrink-0 opacity-80" />
-                          <span className="truncate">{when}</span>
-                        </span>
-                        {resumeLabel && (
-                          <>
-                            <span className="text-ink-600" aria-hidden>
-                              ·
-                            </span>
-                            <span className="shrink-0 text-amber-200/80 tabular-nums">{resumeLabel}</span>
-                          </>
-                        )}
-                      </div>
-                      <div
-                        className={
-                          'mt-1.5 h-0.5 overflow-hidden rounded-full ' +
-                          (rv.showBar ? 'bg-white/10' : 'bg-white/[0.04]')
-                        }
-                        role={rv.showBar ? 'progressbar' : undefined}
-                        aria-valuenow={rv.showBar ? progressPct : undefined}
-                        aria-valuemin={rv.showBar ? 0 : undefined}
-                        aria-valuemax={rv.showBar ? 100 : undefined}
-                        aria-hidden={rv.showBar ? undefined : true}
+                        <div
+                          className={
+                            'truncate font-mono text-[11px] leading-snug ' +
+                            (isActive ? 'text-amber-100' : 'text-ink-100')
+                          }
+                        >
+                          {displayTitle}
+                        </div>
+                        <div className="mt-1 flex min-w-0 items-center gap-x-1.5 text-[9px] leading-none text-ink-500">
+                          <span className="inline-flex min-w-0 items-center gap-0.5 truncate">
+                            <IconClock className="h-2.5 w-2.5 shrink-0 opacity-80" />
+                            <span className="truncate">{when}</span>
+                          </span>
+                          {resumeLabel && (
+                            <>
+                              <span className="text-ink-600" aria-hidden>
+                                ·
+                              </span>
+                              <span className="shrink-0 text-amber-200/80 tabular-nums">
+                                {resumeLabel}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                        <div
+                          className={
+                            'mt-1.5 h-0.5 overflow-hidden rounded-full ' +
+                            (rv.showBar ? 'bg-white/10' : 'bg-white/[0.04]')
+                          }
+                          role={rv.showBar ? 'progressbar' : undefined}
+                          aria-valuenow={rv.showBar ? progressPct : undefined}
+                          aria-valuemin={rv.showBar ? 0 : undefined}
+                          aria-valuemax={rv.showBar ? 100 : undefined}
+                          aria-hidden={rv.showBar ? undefined : true}
+                        >
+                          {rv.showBar && (
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-amber-500/50 to-amber-300/70"
+                              style={{ width: `${progressPct}%` }}
+                            />
+                          )}
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setPendingDelete({
+                            id: d.id,
+                            title: d.id === activeId ? title : d.title,
+                          })
+                        }}
+                        title="Remove from this device"
+                        className="shrink-0 self-stretch rounded-r-lg px-1.5 text-ink-500 transition hover:bg-red-500/10 hover:text-red-200 focus:opacity-100 focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-amber-300/50 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+                        aria-label={`Remove ${d.title} from this device`}
                       >
-                        {rv.showBar && (
-                          <div
-                            className="h-full rounded-full bg-gradient-to-r from-amber-500/50 to-amber-300/70"
-                            style={{ width: `${progressPct}%` }}
-                          />
-                        )}
-                      </div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setPendingDelete({ id: d.id, title: d.id === activeId ? title : d.title })
-                      }}
-                      title="Remove from this device"
-                      className="shrink-0 self-stretch rounded-r-lg px-1.5 text-ink-500 transition hover:bg-red-500/10 hover:text-red-200 focus:opacity-100 focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-amber-300/50 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
-                      aria-label={`Remove ${d.title} from this device`}
-                    >
-                      <IconTrash className="mx-0.5 h-3 w-3" />
-                    </button>
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
+                        <IconTrash className="mx-0.5 h-3 w-3" />
+                      </button>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
         )}
       </section>
       {deleteDialog}
@@ -484,6 +541,15 @@ function IconPlus({ className }: { className?: string }) {
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M5 12h14" />
       <path d="M12 5v14" />
+    </svg>
+  )
+}
+
+function IconUpload({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M12 16V4m0 0l-4 4m4-4l4 4" />
+      <path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
     </svg>
   )
 }

@@ -240,22 +240,10 @@ export const Controls = memo(function Controls({
         />
       </section>
 
-      <p className="px-0.5 text-[10px] leading-relaxed text-ink-500">
-        Right-click the preview for reading options ·{' '}
-        <kbd className="rounded bg-white/10 px-1 py-0.5 font-mono text-ink-300">?</kbd> for
-        shortcuts
-      </p>
-
       {isError && error && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
           {error}
         </div>
-      )}
-
-      {status === 'idle' && (
-        <p className="px-0.5 text-[10px] leading-relaxed text-ink-500">
-          First play downloads ~160 MB Kokoro (once). Cached offline.
-        </p>
       )}
     </div>
   )

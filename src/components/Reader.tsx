@@ -23,7 +23,6 @@ import {
 } from './PreviewContextMenu'
 import { RecentsList } from './RecentsList'
 import { TeleprompterOverlay } from './TeleprompterOverlay'
-import { FileUploader } from './FileUploader'
 import { ShortcutsHelp } from './ShortcutsHelp'
 import { ReaderHud } from './ReaderHud'
 import { MiniTransport } from './MiniTransport'
@@ -1607,7 +1606,7 @@ export function Reader({
         className="studio-deck min-w-0 shrink-0 w-[var(--controls-width)] min-h-0 overflow-hidden"
         style={{ ['--controls-width' as string]: `${controlsWidth}px` }}
       >
-        <div className="studio-deck-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="studio-deck-top shrink-0">
           <Controls
             status={player.status}
             device={player.device}
@@ -1633,26 +1632,25 @@ export function Reader({
             buffering={player.buffering}
             chunkReadyTick={player.chunkReadyTick}
           />
+        </div>
 
-          <div
-            className={`studio-shelf ${immersive ? 'is-collapsed' : ''}`}
-            inert={immersive || undefined}
-            aria-hidden={immersive || undefined}
-          >
-            <div className="studio-shelf-inner">
-              <FileUploader onFile={onFile} compact label="Open Markdown" />
-              <RecentsList
-                documents={documents}
-                activeId={activeDocId}
-                title={sourceName}
-                onSelectDocument={onSelectDocument}
-                onNewDocument={onNewDocument}
-                onDeleteDocument={onDeleteDocument}
-                onOpenFile={openFilePicker}
-                recentsSort={recentsSort}
-                onRecentsSortChange={setRecentsSort}
-              />
-            </div>
+        <div
+          className={`studio-shelf ${immersive ? 'is-collapsed' : ''}`}
+          inert={immersive || undefined}
+          aria-hidden={immersive || undefined}
+        >
+          <div className="studio-shelf-inner">
+            <RecentsList
+              documents={documents}
+              activeId={activeDocId}
+              title={sourceName}
+              onSelectDocument={onSelectDocument}
+              onNewDocument={onNewDocument}
+              onDeleteDocument={onDeleteDocument}
+              onOpenFile={openFilePicker}
+              recentsSort={recentsSort}
+              onRecentsSortChange={setRecentsSort}
+            />
           </div>
         </div>
         <AppMetaFooter />
@@ -1962,7 +1960,6 @@ export function Reader({
             />
           <div className="studio-shelf">
             <div className="studio-shelf-inner">
-              <FileUploader onFile={onFile} compact label="Open Markdown" />
               <RecentsList
                 documents={documents}
                 activeId={activeDocId}
