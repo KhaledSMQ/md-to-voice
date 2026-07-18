@@ -36,6 +36,10 @@ type Props = {
   onTeleprompterMode: (enabled: boolean) => void
   autoplayOnPaste: boolean
   onAutoplayOnPaste: (enabled: boolean) => void
+  autoHideOnPlay: boolean
+  onAutoHideOnPlay: (enabled: boolean) => void
+  autoFocusOnPlay: boolean
+  onAutoFocusOnPlay: (enabled: boolean) => void
   buffering?: boolean
   chunkReadyTick?: number
 }
@@ -66,6 +70,10 @@ export const Controls = memo(function Controls({
   onTeleprompterMode,
   autoplayOnPaste,
   onAutoplayOnPaste,
+  autoHideOnPlay,
+  onAutoHideOnPlay,
+  autoFocusOnPlay,
+  onAutoFocusOnPlay,
   buffering = false,
   chunkReadyTick = 0,
 }: Props) {
@@ -278,6 +286,40 @@ export const Controls = memo(function Controls({
           <span className="min-w-0 flex-1 text-left">
             <span className="block text-xs font-medium text-ink-100">Autoplay on paste</span>
             <span className="block text-[10px] text-ink-500">Play after ⌘V / Paste</span>
+          </span>
+        </button>
+
+        <button
+          type="button"
+          role="switch"
+          aria-checked={autoHideOnPlay}
+          onClick={() => onAutoHideOnPlay(!autoHideOnPlay)}
+          className={`studio-tele-row ${autoHideOnPlay ? 'is-on' : ''}`}
+          title="Hide menu and library shelf while playing"
+        >
+          <span className={`studio-tele-switch ${autoHideOnPlay ? 'is-on' : ''}`} aria-hidden>
+            <span className="studio-tele-knob" />
+          </span>
+          <span className="min-w-0 flex-1 text-left">
+            <span className="block text-xs font-medium text-ink-100">Auto hide</span>
+            <span className="block text-[10px] text-ink-500">Collapse chrome while listening</span>
+          </span>
+        </button>
+
+        <button
+          type="button"
+          role="switch"
+          aria-checked={autoFocusOnPlay}
+          onClick={() => onAutoFocusOnPlay(!autoFocusOnPlay)}
+          className={`studio-tele-row ${autoFocusOnPlay ? 'is-on' : ''}`}
+          title="Enter focus mode when playback starts (F)"
+        >
+          <span className={`studio-tele-switch ${autoFocusOnPlay ? 'is-on' : ''}`} aria-hidden>
+            <span className="studio-tele-knob" />
+          </span>
+          <span className="min-w-0 flex-1 text-left">
+            <span className="block text-xs font-medium text-ink-100">Auto focus on play</span>
+            <span className="block text-[10px] text-ink-500">Focus mode when play starts</span>
           </span>
         </button>
       </section>

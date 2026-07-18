@@ -42,6 +42,10 @@ export const DEFAULT_APP_SETTINGS = {
   teleprompterMode: false,
   /** Start playback automatically after pasting markdown. */
   autoplayOnPaste: true,
+  /** Collapse header tools + library shelf while playing/paused. */
+  autoHideOnPlay: true,
+  /** Enter focus mode automatically when playback starts. */
+  autoFocusOnPlay: false,
   /** Preview panel reading theme (contrast / hue). */
   readingPreset: DEFAULT_READING_PRESET as ReadingPresetId,
   /** Curated reading face. */
@@ -90,6 +94,8 @@ export type AppSettings = {
   controlsWidth: number
   teleprompterMode: boolean
   autoplayOnPaste: boolean
+  autoHideOnPlay: boolean
+  autoFocusOnPlay: boolean
   readingPreset: ReadingPresetId
   readingTypography: ReadingTypographyId
   readingBrightness: number
@@ -150,6 +156,14 @@ export function loadAppSettings(): AppSettings {
       typeof p.autoplayOnPaste === 'boolean'
         ? p.autoplayOnPaste
         : DEFAULT_APP_SETTINGS.autoplayOnPaste
+    const autoHideOnPlay =
+      typeof p.autoHideOnPlay === 'boolean'
+        ? p.autoHideOnPlay
+        : DEFAULT_APP_SETTINGS.autoHideOnPlay
+    const autoFocusOnPlay =
+      typeof p.autoFocusOnPlay === 'boolean'
+        ? p.autoFocusOnPlay
+        : DEFAULT_APP_SETTINGS.autoFocusOnPlay
     const readingPreset = isReadingPresetId(p.readingPreset)
       ? p.readingPreset
       : DEFAULT_APP_SETTINGS.readingPreset
@@ -182,6 +196,8 @@ export function loadAppSettings(): AppSettings {
       controlsWidth,
       teleprompterMode,
       autoplayOnPaste,
+      autoHideOnPlay,
+      autoFocusOnPlay,
       readingPreset,
       readingTypography,
       readingBrightness,
@@ -222,6 +238,10 @@ export function saveAppSettings(patch: Partial<AppSettings>): void {
         typeof patch.teleprompterMode === 'boolean' ? patch.teleprompterMode : prev.teleprompterMode,
       autoplayOnPaste:
         typeof patch.autoplayOnPaste === 'boolean' ? patch.autoplayOnPaste : prev.autoplayOnPaste,
+      autoHideOnPlay:
+        typeof patch.autoHideOnPlay === 'boolean' ? patch.autoHideOnPlay : prev.autoHideOnPlay,
+      autoFocusOnPlay:
+        typeof patch.autoFocusOnPlay === 'boolean' ? patch.autoFocusOnPlay : prev.autoFocusOnPlay,
       readingPreset: isReadingPresetId(patch.readingPreset)
         ? patch.readingPreset
         : prev.readingPreset,

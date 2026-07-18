@@ -210,6 +210,12 @@ export function Reader({
   const [autoplayOnPaste, setAutoplayOnPaste] = useState(
     () => loadAppSettings().autoplayOnPaste,
   )
+  const [autoHideOnPlay, setAutoHideOnPlay] = useState(
+    () => loadAppSettings().autoHideOnPlay,
+  )
+  const [autoFocusOnPlay, setAutoFocusOnPlay] = useState(
+    () => loadAppSettings().autoFocusOnPlay,
+  )
   /** Session-only hide (Esc / Exit) without flipping the saved preference. */
   const [teleprompterDismissed, setTeleprompterDismissed] = useState(false)
   /** Armed on paste when autoplay is on; fires once deferred parse has chunks. */
@@ -227,11 +233,20 @@ export function Reader({
 
   useEffect(() => {
     const t = setTimeout(
-      () => saveAppSettings({ voice, speed, volume, teleprompterMode, autoplayOnPaste }),
+      () =>
+        saveAppSettings({
+          voice,
+          speed,
+          volume,
+          teleprompterMode,
+          autoplayOnPaste,
+          autoHideOnPlay,
+          autoFocusOnPlay,
+        }),
       UI_SAVE_MS,
     )
     return () => clearTimeout(t)
-  }, [voice, speed, volume, teleprompterMode, autoplayOnPaste])
+  }, [voice, speed, volume, teleprompterMode, autoplayOnPaste, autoHideOnPlay, autoFocusOnPlay])
 
   const scheduleResumeSave = useCallback(
     (w: number) => {
@@ -374,6 +389,7 @@ export function Reader({
     (player.status === 'playing' || player.status === 'paused')
 
   const readingFocus =
+    autoHideOnPlay &&
     !showTeleprompter &&
     !inlineEdit &&
     !noPlayableText &&
@@ -387,8 +403,8 @@ export function Reader({
 
   // Listening: keep the mini-player, collapse the expanded sheet.
   useEffect(() => {
-    if (player.status === 'playing') setStudioSheetOpen(false)
-  }, [player.status])
+    if (autoHideOnPlay && player.status === 'playing') setStudioSheetOpen(false)
+  }, [autoHideOnPlay, player.status])
 
   // Desktop never uses the sheet; reset so returning to mobile starts at peek.
   useEffect(() => {
@@ -618,12 +634,30 @@ export function Reader({
     if (player.status === 'playing' && prevPlayerStatus.current !== 'playing') {
       onPlaybackBegan?.()
       setResumeBannerDismissedKey(resumeBannerKey)
+      if (
+        autoFocusOnPlay &&
+        !inlineEdit &&
+        !noPlayableText &&
+        !(teleprompterMode && !teleprompterDismissed)
+      ) {
+        setFocusMode(true)
+      }
     }
     if (player.status === 'paused' && prevPlayerStatus.current === 'playing') {
       if (lastWordHeard.current >= 0) flushResumeSave(lastWordHeard.current)
     }
     prevPlayerStatus.current = player.status
-  }, [player.status, onPlaybackBegan, flushResumeSave, resumeBannerKey])
+  }, [
+    player.status,
+    onPlaybackBegan,
+    flushResumeSave,
+    resumeBannerKey,
+    autoFocusOnPlay,
+    inlineEdit,
+    noPlayableText,
+    teleprompterMode,
+    teleprompterDismissed,
+  ])
 
   const onWordClick = useCallback(
     (wIdx: number) => {
@@ -1294,6 +1328,10 @@ export function Reader({
           }}
           autoplayOnPaste={autoplayOnPaste}
           onAutoplayOnPaste={setAutoplayOnPaste}
+          autoHideOnPlay={autoHideOnPlay}
+          onAutoHideOnPlay={setAutoHideOnPlay}
+          autoFocusOnPlay={autoFocusOnPlay}
+          onAutoFocusOnPlay={setAutoFocusOnPlay}
           buffering={player.buffering}
           chunkReadyTick={player.chunkReadyTick}
         />
@@ -1600,6 +1638,10 @@ export function Reader({
             }}
             autoplayOnPaste={autoplayOnPaste}
             onAutoplayOnPaste={setAutoplayOnPaste}
+            autoHideOnPlay={autoHideOnPlay}
+            onAutoHideOnPlay={setAutoHideOnPlay}
+            autoFocusOnPlay={autoFocusOnPlay}
+            onAutoFocusOnPlay={setAutoFocusOnPlay}
             buffering={player.buffering}
             chunkReadyTick={player.chunkReadyTick}
           />
