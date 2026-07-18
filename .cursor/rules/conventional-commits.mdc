@@ -1,0 +1,58 @@
+---
+description: Conventional Commits format enforced by husky + commitlint
+alwaysApply: true
+---
+
+# Conventional Commits
+
+When creating git commits in this repo, follow Conventional Commits. Husky runs commitlint on `commit-msg` and rejects non-compliant messages.
+
+## Format
+
+```
+type(scope): short imperative summary
+
+Optional body wrapped at 100 chars per line.
+```
+
+- Subject (header) max **100** characters (prefer ~72).
+- Body lines max **100** characters each.
+- Imperative mood: `add`, `fix`, `improve` — not `added` / `adds`.
+- Scope optional: `reader`, `tts`, `ci`, etc.
+
+## Types and releases
+
+| Type | Bump on `main` |
+| --- | --- |
+| `feat` | minor |
+| `fix` | patch |
+| `feat!` / `BREAKING CHANGE:` | major |
+| `perf` | patch |
+| `docs`, `chore`, `refactor`, `style`, `test`, `ci` | none |
+
+## Examples
+
+```
+feat(reader): add playback bookmarks
+
+Implement bookmarking in the Reader so users can set, jump to, and
+manage bookmarks during playback.
+```
+
+```
+fix(tts): recover from cancelled chunk generation
+```
+
+## Avoid
+
+```
+# ❌ header too long / essay in subject
+feat: implement bookmarking functionality in Reader component, allowing users to set, jump to, and manage bookmarks during playback, enhancing navigation and user experience
+
+# ❌ body line over 100 chars
+feat: add playback bookmarks
+
+implement bookmarking functionality in Reader component, allowing users to set, jump to, and manage bookmarks during playback
+```
+
+Do not bump `package.json` version in local commits — semantic-release does that on `main`.
