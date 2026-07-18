@@ -1,5 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent } from 'react'
-import { MarkdownReader, type MarkdownReaderHandle, type PlayheadVisibility } from './MarkdownReader'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ChangeEvent,
+  type ReactNode,
+} from 'react'
+import { MarkdownReader, type MarkdownReaderHandle, type PlayheadVisibility, type PreviewContextInfo } from './MarkdownReader'
 import { Controls } from './Controls'
 import { ColumnResizeHandle } from './ColumnResizeHandle'
 import { ResumeBanner } from './ResumeBanner'
@@ -7,6 +16,10 @@ import { ReaderChrome } from './ReaderChrome'
 import { ReaderEmptyState } from './ReaderEmptyState'
 import { PreviewSearchBar } from './PreviewSearchBar'
 import { PreviewOutline } from './PreviewOutline'
+import {
+  PreviewContextMenu,
+  type PreviewContextMenuItem,
+} from './PreviewContextMenu'
 import { RecentsList } from './RecentsList'
 import { TeleprompterOverlay } from './TeleprompterOverlay'
 import { FileUploader } from './FileUploader'
@@ -225,6 +238,12 @@ export function Reader({
   const [playhead, setPlayhead] = useState<PlayheadVisibility>({ inView: true, out: null })
   const [nowPlayingVisible, setNowPlayingVisible] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
+  const [previewMenu, setPreviewMenu] = useState<{
+    x: number
+    y: number
+    wIdx: number | null
+    selectedText: string
+  } | null>(null)
   const [resumeBannerDismissedKey, setResumeBannerDismissedKey] = useState<string | null>(null)
   const resumeBannerKey = `${activeDocId}:${openResume}`
   const resumeBannerDismissed = resumeBannerDismissedKey === resumeBannerKey
@@ -668,6 +687,40 @@ export function Reader({
     [parsed.words, showHud],
   )
 
+  const closePreviewMenu = useCallback(() => setPreviewMenu(null), [])
+
+  const onPreviewContextMenu = useCallback((info: PreviewContextInfo) => {
+    setPreviewMenu({
+      x: info.clientX,
+      y: info.clientY,
+      wIdx: info.wIdx,
+      selectedText: info.selectedText,
+    })
+  }, [])
+
+  const copyPreviewText = useCallback(
+    async (text: string) => {
+      const value = text.trim()
+      if (!value) return
+      try {
+        await navigator.clipboard.writeText(value)
+        showHud('Copied')
+      } catch {
+        showHud('Copy failed')
+      }
+    },
+    [showHud],
+  )
+
+  const bookmarkAtWord = useCallback(
+    (wIdx: number) => {
+      setBookmarkWordIdx(wIdx)
+      const word = parsed.words.find((t) => t.idx === wIdx)
+      showHud(word ? `Bookmark “${word.text}”` : 'Bookmark set')
+    },
+    [parsed.words, showHud],
+  )
+
   useEffect(() => {
     readerRef.current?.reset()
   }, [markdown])
@@ -721,13 +774,17 @@ export function Reader({
     readerRef.current?.setAutoScrollLocked(false)
   }, [])
 
-  const openSearch = useCallback(() => {
-    if (inlineEdit || noPlayableText || showTeleprompter) return
-    setOutlineOpen(false)
-    setSearchOpen(true)
-    setSearchFocusNonce((n) => n + 1)
-    readerRef.current?.setAutoScrollLocked(true)
-  }, [inlineEdit, noPlayableText, showTeleprompter])
+  const openSearch = useCallback(
+    (initialQuery?: string) => {
+      if (inlineEdit || noPlayableText || showTeleprompter) return
+      setOutlineOpen(false)
+      if (initialQuery != null) setSearchQuery(initialQuery)
+      setSearchOpen(true)
+      setSearchFocusNonce((n) => n + 1)
+      readerRef.current?.setAutoScrollLocked(true)
+    },
+    [inlineEdit, noPlayableText, showTeleprompter],
+  )
 
   const paintSearchHit = useCallback(
     (ranges: Range[], index: number) => {
@@ -796,6 +853,103 @@ export function Reader({
   useEffect(() => {
     if (inlineEdit || showTeleprompter) setOutlineOpen(false)
   }, [inlineEdit, showTeleprompter])
+
+  useEffect(() => {
+    if (inlineEdit || showTeleprompter || noPlayableText) setPreviewMenu(null)
+  }, [inlineEdit, showTeleprompter, noPlayableText, activeDocId])
+
+  const previewMenuItems = useMemo((): PreviewContextMenuItem[] => {
+    if (!previewMenu) return []
+    const { wIdx, selectedText } = previewMenu
+    const selection = selectedText.trim()
+    const wordText =
+      wIdx != null ? (parsed.words.find((w) => w.idx === wIdx)?.text ?? '') : ''
+    const items: PreviewContextMenuItem[] = []
+
+    if (wIdx != null) {
+      items.push({
+        id: 'play',
+        label: 'Play from here',
+        icon: <IconPlay />,
+        onSelect: () => onWordClick(wIdx),
+      })
+    }
+
+    if (selection) {
+      items.push({
+        id: 'copy',
+        label: 'Copy',
+        hint: '⌘C',
+        icon: <IconCopy />,
+        onSelect: () => void copyPreviewText(selection),
+      })
+    } else if (wordText) {
+      items.push({
+        id: 'copy-word',
+        label: 'Copy word',
+        icon: <IconCopy />,
+        onSelect: () => void copyPreviewText(wordText),
+      })
+    }
+
+    if (wIdx != null) {
+      items.push({
+        id: 'bookmark',
+        label: 'Bookmark here',
+        hint: 'B',
+        icon: <IconBookmark />,
+        separatorBefore: items.length > 0,
+        onSelect: () => bookmarkAtWord(wIdx),
+      })
+    }
+
+    if (bookmarkWordIdx != null) {
+      items.push({
+        id: 'jump-bookmark',
+        label: 'Jump to bookmark',
+        hint: "'",
+        icon: <IconJumpBookmark />,
+        separatorBefore: wIdx == null && items.length > 0,
+        onSelect: () => {
+          void playerRef.current.seekToWord(bookmarkWordIdx)
+          showHud('Jumped to bookmark')
+        },
+      })
+    }
+
+    items.push({
+      id: 'find',
+      label: selection ? 'Find selection' : 'Find in preview',
+      hint: '⌘F',
+      icon: <IconSearch />,
+      separatorBefore: items.length > 0,
+      onSelect: () => openSearch(selection || undefined),
+    })
+
+    items.push({
+      id: 'edit',
+      label: 'Edit markdown',
+      hint: '/',
+      icon: <IconEdit />,
+      onSelect: () => {
+        closeSearch()
+        setInlineEdit(true)
+        showHud('Editing')
+      },
+    })
+
+    return items
+  }, [
+    previewMenu,
+    parsed.words,
+    bookmarkWordIdx,
+    onWordClick,
+    copyPreviewText,
+    bookmarkAtWord,
+    openSearch,
+    closeSearch,
+    showHud,
+  ])
 
   const jumpToOutlineSection = useCallback(
     (id: string) => {
@@ -1000,6 +1154,7 @@ export function Reader({
     showHud,
     skipSentence,
     bumpSpeed,
+    bookmarkAtWord,
   })
   keydownCtxRef.current = {
     inlineEdit,
@@ -1027,6 +1182,7 @@ export function Reader({
     showHud,
     skipSentence,
     bumpSpeed,
+    bookmarkAtWord,
   }
 
   useEffect(() => {
@@ -1173,9 +1329,7 @@ export function Reader({
               ? ctx.openResume
               : (ctx.parsedWords[0]?.idx ?? null)
         if (w == null) return
-        setBookmarkWordIdx(w)
-        const word = ctx.parsedWords.find((t) => t.idx === w)
-        ctx.showHud(word ? `Bookmark “${word.text}”` : 'Bookmark set')
+        ctx.bookmarkAtWord(w)
       } else if (e.key === "'") {
         if (ctx.bookmarkWordIdx == null) {
           ctx.showHud('No bookmark')
@@ -1486,6 +1640,7 @@ export function Reader({
                 reactNode={parsed.reactNode}
                 parseKey={parseKey}
                 onWordClick={onWordClick}
+                onContextMenuWord={onPreviewContextMenu}
                 onActiveVisibilityChange={onActiveVisibilityChange}
                 ref={readerRef}
                 className="markdown-body reader-measure min-h-0 min-w-0 h-full max-h-full flex-1 overflow-y-auto py-4 sm:py-6 lg:py-8"
@@ -1494,6 +1649,13 @@ export function Reader({
                   ['--reader-measure' as string]: measureWidthCss(measureWidth),
                   fontSize: `${fontSize}px`,
                 }}
+              />
+              <PreviewContextMenu
+                open={previewMenu != null}
+                x={previewMenu?.x ?? 0}
+                y={previewMenu?.y ?? 0}
+                items={previewMenuItems}
+                onClose={closePreviewMenu}
               />
               {!useCssHighlight &&
                 overlayBoxes.map((box, i) => (
@@ -1694,5 +1856,58 @@ function PlayArrows({ direction }: { direction: 'above' | 'below' }) {
         <path d="M6 8l6 6 6-6" />
       )}
     </svg>
+  )
+}
+
+function menuIcon(path: ReactNode) {
+  return (
+    <svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      {path}
+    </svg>
+  )
+}
+
+function IconPlay() {
+  return menuIcon(<path d="M8 5v14l11-7z" fill="currentColor" stroke="none" />)
+}
+
+function IconCopy() {
+  return menuIcon(
+    <>
+      <rect x="9" y="9" width="11" height="11" rx="1.5" />
+      <path d="M5 15V5.5A1.5 1.5 0 0 1 6.5 4H15" strokeLinecap="round" />
+    </>,
+  )
+}
+
+function IconBookmark() {
+  return menuIcon(<path d="M7 4h10v16l-5-3.5L7 20V4z" strokeLinejoin="round" />)
+}
+
+function IconJumpBookmark() {
+  return menuIcon(
+    <>
+      <path d="M7 4h10v16l-5-3.5L7 20V4z" strokeLinejoin="round" />
+      <path d="M12 9v4" strokeLinecap="round" />
+    </>,
+  )
+}
+
+function IconSearch() {
+  return menuIcon(
+    <>
+      <circle cx="11" cy="11" r="6" />
+      <path d="m16 16 4 4" strokeLinecap="round" />
+    </>,
+  )
+}
+
+function IconEdit() {
+  return menuIcon(
+    <path
+      d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"
+      strokeLinejoin="round"
+      strokeLinecap="round"
+    />,
   )
 }

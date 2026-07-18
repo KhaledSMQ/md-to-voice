@@ -32,17 +32,50 @@ export type PlayheadVisibility = {
   out: 'above' | 'below' | null
 }
 
+export type PreviewContextInfo = {
+  wIdx: number | null
+  clientX: number
+  clientY: number
+  selectedText: string
+}
+
 type Props = {
   /** Pre-parsed karaoke React tree from `parseDocument` / `useParsedDocument`. */
   reactNode: ReactNode
   /** Bumps word-element remapping when the underlying parse changes. */
   parseKey: string | number
   onWordClick?: (wIdx: number) => void
+  /**
+   * Right-click / long-press on the preview. Caller should open a context menu;
+   * native menu is suppressed when this handler is provided.
+   */
+  onContextMenuWord?: (info: PreviewContextInfo) => void
   /** Merges with defaults; set full string for embedded layout in Reader shell. */
   className?: string
   style?: CSSProperties
   /** When the playhead leaves the visible scrollport, `out` tells you if it is above or below. */
   onActiveVisibilityChange?: (v: PlayheadVisibility) => void
+}
+
+function wordIdxFromTarget(target: EventTarget | null, root: HTMLElement): number | null {
+  let el = target as HTMLElement | null
+  while (el && el !== root) {
+    if (el.classList.contains('word') && el.dataset.wIdx) {
+      const idx = Number(el.dataset.wIdx)
+      if (Number.isFinite(idx)) return idx
+      return null
+    }
+    el = el.parentElement
+  }
+  return null
+}
+
+function selectedTextInContainer(container: HTMLElement): string {
+  const sel = window.getSelection()
+  if (!sel || sel.isCollapsed || sel.rangeCount === 0) return ''
+  const range = sel.getRangeAt(0)
+  if (!container.contains(range.commonAncestorContainer)) return ''
+  return sel.toString()
 }
 
 /**
@@ -128,7 +161,15 @@ function directionTowardPlayhead(
 }
 
 export const MarkdownReader = forwardRef<MarkdownReaderHandle, Props>(function MarkdownReader(
-  { reactNode, parseKey, onWordClick, className: classNameProp, style, onActiveVisibilityChange },
+  {
+    reactNode,
+    parseKey,
+    onWordClick,
+    onContextMenuWord,
+    className: classNameProp,
+    style,
+    onActiveVisibilityChange,
+  },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -141,12 +182,16 @@ export const MarkdownReader = forwardRef<MarkdownReaderHandle, Props>(function M
   const autoScrollLockedRef = useRef<boolean>(false)
   const lastVisNotified = useRef<string>('')
   const onWordClickRef = useRef(onWordClick)
+  const onContextMenuWordRef = useRef(onContextMenuWord)
   const onVisRef = useRef(onActiveVisibilityChange)
   const pendingNotifyRaf = useRef<number | null>(null)
   const notifyActiveInViewRef = useRef<() => void>(() => {})
   useEffect(() => {
     onWordClickRef.current = onWordClick
   }, [onWordClick])
+  useEffect(() => {
+    onContextMenuWordRef.current = onContextMenuWord
+  }, [onContextMenuWord])
   useEffect(() => {
     onVisRef.current = onActiveVisibilityChange
   }, [onActiveVisibilityChange])
@@ -250,18 +295,26 @@ export const MarkdownReader = forwardRef<MarkdownReaderHandle, Props>(function M
       if (!cb) return
       const sel = window.getSelection()
       if (sel && !sel.isCollapsed && sel.toString().length > 0) return
-      let el = e.target as HTMLElement | null
-      while (el && el !== c) {
-        if (el.classList.contains('word') && el.dataset.wIdx) {
-          const idx = Number(el.dataset.wIdx)
-          if (Number.isFinite(idx)) cb(idx)
-          return
-        }
-        el = el.parentElement
-      }
+      const idx = wordIdxFromTarget(e.target, c)
+      if (idx != null) cb(idx)
+    }
+    const onContextMenu = (e: MouseEvent) => {
+      const cb = onContextMenuWordRef.current
+      if (!cb) return
+      e.preventDefault()
+      cb({
+        wIdx: wordIdxFromTarget(e.target, c),
+        clientX: e.clientX,
+        clientY: e.clientY,
+        selectedText: selectedTextInContainer(c),
+      })
     }
     c.addEventListener('click', onClick)
-    return () => c.removeEventListener('click', onClick)
+    c.addEventListener('contextmenu', onContextMenu)
+    return () => {
+      c.removeEventListener('click', onClick)
+      c.removeEventListener('contextmenu', onContextMenu)
+    }
   }, [])
 
   const animateScroll = useCallback(() => {
