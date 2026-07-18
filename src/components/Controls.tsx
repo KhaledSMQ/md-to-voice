@@ -32,16 +32,6 @@ type Props = {
   onStop: () => void
   onPrevChunk: () => void
   onNextChunk: () => void
-  teleprompterMode: boolean
-  onTeleprompterMode: (enabled: boolean) => void
-  autoplayOnPaste: boolean
-  onAutoplayOnPaste: (enabled: boolean) => void
-  autoHideOnPlay: boolean
-  onAutoHideOnPlay: (enabled: boolean) => void
-  autoFocusOnPlay: boolean
-  onAutoFocusOnPlay: (enabled: boolean) => void
-  focusMiniPlayer: boolean
-  onFocusMiniPlayer: (enabled: boolean) => void
   buffering?: boolean
   chunkReadyTick?: number
 }
@@ -68,16 +58,6 @@ export const Controls = memo(function Controls({
   onStop,
   onPrevChunk,
   onNextChunk,
-  teleprompterMode,
-  onTeleprompterMode,
-  autoplayOnPaste,
-  onAutoplayOnPaste,
-  autoHideOnPlay,
-  onAutoHideOnPlay,
-  autoFocusOnPlay,
-  onAutoFocusOnPlay,
-  focusMiniPlayer,
-  onFocusMiniPlayer,
   buffering = false,
   chunkReadyTick = 0,
 }: Props) {
@@ -258,95 +238,11 @@ export const Controls = memo(function Controls({
           buffering={buffering}
           chunkReadyTick={chunkReadyTick}
         />
-
-        <button
-          type="button"
-          role="switch"
-          aria-checked={teleprompterMode}
-          onClick={() => onTeleprompterMode(!teleprompterMode)}
-          className={`studio-tele-row ${teleprompterMode ? 'is-on' : ''}`}
-          title="Teleprompter (T while playing)"
-        >
-          <span className={`studio-tele-switch ${teleprompterMode ? 'is-on' : ''}`} aria-hidden>
-            <span className="studio-tele-knob" />
-          </span>
-          <span className="min-w-0 flex-1 text-left">
-            <span className="block text-xs font-medium text-ink-100">Teleprompter</span>
-            <span className="block text-[10px] text-ink-500">Press T while playing</span>
-          </span>
-        </button>
-
-        <button
-          type="button"
-          role="switch"
-          aria-checked={autoplayOnPaste}
-          onClick={() => onAutoplayOnPaste(!autoplayOnPaste)}
-          className={`studio-tele-row ${autoplayOnPaste ? 'is-on' : ''}`}
-          title="Autoplay when pasting markdown"
-        >
-          <span className={`studio-tele-switch ${autoplayOnPaste ? 'is-on' : ''}`} aria-hidden>
-            <span className="studio-tele-knob" />
-          </span>
-          <span className="min-w-0 flex-1 text-left">
-            <span className="block text-xs font-medium text-ink-100">Autoplay on paste</span>
-            <span className="block text-[10px] text-ink-500">Play after ⌘V / Paste</span>
-          </span>
-        </button>
-
-        <button
-          type="button"
-          role="switch"
-          aria-checked={autoHideOnPlay}
-          onClick={() => onAutoHideOnPlay(!autoHideOnPlay)}
-          className={`studio-tele-row ${autoHideOnPlay ? 'is-on' : ''}`}
-          title="Hide menu and library shelf while playing"
-        >
-          <span className={`studio-tele-switch ${autoHideOnPlay ? 'is-on' : ''}`} aria-hidden>
-            <span className="studio-tele-knob" />
-          </span>
-          <span className="min-w-0 flex-1 text-left">
-            <span className="block text-xs font-medium text-ink-100">Auto hide</span>
-            <span className="block text-[10px] text-ink-500">Collapse chrome while listening</span>
-          </span>
-        </button>
-
-        <button
-          type="button"
-          role="switch"
-          aria-checked={autoFocusOnPlay}
-          onClick={() => onAutoFocusOnPlay(!autoFocusOnPlay)}
-          className={`studio-tele-row ${autoFocusOnPlay ? 'is-on' : ''}`}
-          title="Enter focus mode when playback starts (F)"
-        >
-          <span className={`studio-tele-switch ${autoFocusOnPlay ? 'is-on' : ''}`} aria-hidden>
-            <span className="studio-tele-knob" />
-          </span>
-          <span className="min-w-0 flex-1 text-left">
-            <span className="block text-xs font-medium text-ink-100">Auto focus on play</span>
-            <span className="block text-[10px] text-ink-500">Focus mode when play starts</span>
-          </span>
-        </button>
-
-        <button
-          type="button"
-          role="switch"
-          aria-checked={focusMiniPlayer}
-          onClick={() => onFocusMiniPlayer(!focusMiniPlayer)}
-          className={`studio-tele-row ${focusMiniPlayer ? 'is-on' : ''}`}
-          title="Keep mini transport bar while in focus mode"
-        >
-          <span className={`studio-tele-switch ${focusMiniPlayer ? 'is-on' : ''}`} aria-hidden>
-            <span className="studio-tele-knob" />
-          </span>
-          <span className="min-w-0 flex-1 text-left">
-            <span className="block text-xs font-medium text-ink-100">Focus mini player</span>
-            <span className="block text-[10px] text-ink-500">Keep transport while focused</span>
-          </span>
-        </button>
       </section>
 
-      <p className="px-0.5 text-[10px] text-ink-500">
-        Press <kbd className="rounded bg-white/10 px-1 py-0.5 font-mono text-ink-300">?</kbd> for
+      <p className="px-0.5 text-[10px] leading-relaxed text-ink-500">
+        Right-click the preview for reading options ·{' '}
+        <kbd className="rounded bg-white/10 px-1 py-0.5 font-mono text-ink-300">?</kbd> for
         shortcuts
       </p>
 

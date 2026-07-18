@@ -1031,6 +1031,61 @@ export function Reader({
       },
     })
 
+    items.push({
+      id: 'teleprompter',
+      label: 'Teleprompter',
+      hint: 'T',
+      checked: teleprompterMode,
+      separatorBefore: true,
+      onSelect: () => {
+        const next = !teleprompterMode
+        if (next) closeSearch()
+        setTeleprompterMode(next)
+        if (next) setTeleprompterDismissed(false)
+        showHud(next ? 'Teleprompter on' : 'Teleprompter off')
+      },
+    })
+    items.push({
+      id: 'autoplay-paste',
+      label: 'Autoplay on paste',
+      checked: autoplayOnPaste,
+      onSelect: () => {
+        const next = !autoplayOnPaste
+        setAutoplayOnPaste(next)
+        showHud(next ? 'Autoplay on paste' : 'Autoplay off')
+      },
+    })
+    items.push({
+      id: 'auto-hide',
+      label: 'Auto hide',
+      checked: autoHideOnPlay,
+      onSelect: () => {
+        const next = !autoHideOnPlay
+        setAutoHideOnPlay(next)
+        showHud(next ? 'Auto hide on' : 'Auto hide off')
+      },
+    })
+    items.push({
+      id: 'auto-focus',
+      label: 'Auto focus on play',
+      checked: autoFocusOnPlay,
+      onSelect: () => {
+        const next = !autoFocusOnPlay
+        setAutoFocusOnPlay(next)
+        showHud(next ? 'Auto focus on' : 'Auto focus off')
+      },
+    })
+    items.push({
+      id: 'focus-mini',
+      label: 'Focus mini player',
+      checked: focusMiniPlayer,
+      onSelect: () => {
+        const next = !focusMiniPlayer
+        setFocusMiniPlayer(next)
+        showHud(next ? 'Focus mini player on' : 'Focus mini player off')
+      },
+    })
+
     return items
   }, [
     previewMenu,
@@ -1042,6 +1097,12 @@ export function Reader({
     jumpBookmarkCycle,
     openSearch,
     closeSearch,
+    teleprompterMode,
+    autoplayOnPaste,
+    autoHideOnPlay,
+    autoFocusOnPlay,
+    focusMiniPlayer,
+    showHud,
   ])
 
   const jumpToOutlineSection = useCallback(
@@ -1568,20 +1629,6 @@ export function Reader({
           onStop={handleStop}
           onPrevChunk={() => void player.skipChunk(-1)}
           onNextChunk={() => void player.skipChunk(1)}
-          teleprompterMode={teleprompterMode}
-          onTeleprompterMode={(enabled) => {
-            if (enabled) closeSearch()
-            setTeleprompterMode(enabled)
-            if (enabled) setTeleprompterDismissed(false)
-          }}
-          autoplayOnPaste={autoplayOnPaste}
-          onAutoplayOnPaste={setAutoplayOnPaste}
-          autoHideOnPlay={autoHideOnPlay}
-          onAutoHideOnPlay={setAutoHideOnPlay}
-          autoFocusOnPlay={autoFocusOnPlay}
-          onAutoFocusOnPlay={setAutoFocusOnPlay}
-          focusMiniPlayer={focusMiniPlayer}
-          onFocusMiniPlayer={setFocusMiniPlayer}
           buffering={player.buffering}
           chunkReadyTick={player.chunkReadyTick}
         />
@@ -1906,25 +1953,11 @@ export function Reader({
             onPlay={player.play}
             onPause={player.pause}
             onStop={handleStop}
-            onPrevChunk={() => void player.skipChunk(-1)}
-            onNextChunk={() => void player.skipChunk(1)}
-            teleprompterMode={teleprompterMode}
-            onTeleprompterMode={(enabled) => {
-              if (enabled) closeSearch()
-              setTeleprompterMode(enabled)
-              if (enabled) setTeleprompterDismissed(false)
-            }}
-            autoplayOnPaste={autoplayOnPaste}
-            onAutoplayOnPaste={setAutoplayOnPaste}
-            autoHideOnPlay={autoHideOnPlay}
-            onAutoHideOnPlay={setAutoHideOnPlay}
-            autoFocusOnPlay={autoFocusOnPlay}
-            onAutoFocusOnPlay={setAutoFocusOnPlay}
-            focusMiniPlayer={focusMiniPlayer}
-            onFocusMiniPlayer={setFocusMiniPlayer}
-            buffering={player.buffering}
-            chunkReadyTick={player.chunkReadyTick}
-          />
+              onPrevChunk={() => void player.skipChunk(-1)}
+              onNextChunk={() => void player.skipChunk(1)}
+              buffering={player.buffering}
+              chunkReadyTick={player.chunkReadyTick}
+            />
           <div className="studio-shelf">
             <div className="studio-shelf-inner">
               <FileUploader onFile={onFile} compact label="Open Markdown" />

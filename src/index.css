@@ -1700,30 +1700,6 @@ body {
     }
   }
 
-  .studio-tele-row {
-    @apply flex w-full items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] px-2.5 py-2 transition-colors hover:border-white/20 hover:bg-white/[0.05];
-  }
-
-  .studio-tele-row.is-on {
-    @apply border-amber-300/35 bg-amber-300/10;
-  }
-
-  .studio-tele-switch {
-    @apply inline-flex h-5 w-9 shrink-0 items-center rounded-full border border-white/15 bg-white/10 p-0.5 transition-colors;
-  }
-
-  .studio-tele-switch.is-on {
-    @apply border-amber-300/50 bg-amber-300/30;
-  }
-
-  .studio-tele-knob {
-    @apply h-3.5 w-3.5 rounded-full bg-white shadow transition-transform;
-  }
-
-  .studio-tele-switch.is-on .studio-tele-knob {
-    transform: translateX(0.875rem);
-  }
-
   .studio-shelf {
     display: grid;
     grid-template-rows: 1fr;
@@ -1780,7 +1756,6 @@ body {
     .studio-app-sep,
     .studio-app-actions,
     .studio-shelf,
-    .studio-tele-knob,
     .voice-carousel-name,
     .reader-panel {
       transition: none;

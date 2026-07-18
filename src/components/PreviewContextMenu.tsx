@@ -5,6 +5,8 @@ export type PreviewContextMenuItem = {
   label: string
   hint?: string
   icon?: ReactNode
+  /** When set, renders as a checkable menu item (toggle). */
+  checked?: boolean
   separatorBefore?: boolean
   onSelect: () => void
 }
@@ -50,7 +52,9 @@ export function PreviewContextMenu({ open, x, y, items, onClose }: PreviewContex
   useEffect(() => {
     if (!open) return
     const focusRaf = requestAnimationFrame(() => {
-      const first = menuRef.current?.querySelector<HTMLButtonElement>('button[role="menuitem"]')
+      const first = menuRef.current?.querySelector<HTMLButtonElement>(
+        'button[role="menuitem"], button[role="menuitemcheckbox"]',
+      )
       first?.focus({ preventScroll: true })
     })
 
@@ -67,7 +71,9 @@ export function PreviewContextMenu({ open, x, y, items, onClose }: PreviewContex
         return
       }
       const buttons = Array.from(
-        menuRef.current?.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]') ?? [],
+        menuRef.current?.querySelectorAll<HTMLButtonElement>(
+          'button[role="menuitem"], button[role="menuitemcheckbox"]',
+        ) ?? [],
       )
       if (buttons.length === 0) return
       e.preventDefault()
@@ -117,34 +123,49 @@ export function PreviewContextMenu({ open, x, y, items, onClose }: PreviewContex
       id={menuId}
       role="menu"
       aria-label="Preview actions"
-      className="fixed z-[70] min-w-[12.5rem] overflow-hidden rounded-xl border border-white/10 bg-ink-950/95 p-1.5 shadow-xl shadow-ink-950/50 backdrop-blur"
+      className="fixed z-[70] min-w-[13.5rem] overflow-hidden rounded-xl border border-white/10 bg-ink-950/95 p-1.5 shadow-xl shadow-ink-950/50 backdrop-blur"
       style={{ left: pos.left, top: pos.top }}
       onContextMenu={(e) => e.preventDefault()}
     >
-      {items.map((item) => (
-        <div key={item.id}>
-          {item.separatorBefore && <div className="my-1 border-t border-white/5" role="separator" />}
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              item.onSelect()
-              onClose()
-            }}
-            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] text-ink-200 transition-colors hover:bg-white/[0.06] hover:text-ink-50 focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-300/40"
-          >
-            {item.icon && (
-              <span className="shrink-0 text-ink-400" aria-hidden>
-                {item.icon}
-              </span>
+      {items.map((item) => {
+        const isToggle = typeof item.checked === 'boolean'
+        return (
+          <div key={item.id}>
+            {item.separatorBefore && (
+              <div className="my-1 border-t border-white/5" role="separator" />
             )}
-            <span className="min-w-0 flex-1 truncate">{item.label}</span>
-            {item.hint && (
-              <span className="font-mono text-[10px] text-ink-500">{item.hint}</span>
-            )}
-          </button>
-        </div>
-      ))}
+            <button
+              type="button"
+              role={isToggle ? 'menuitemcheckbox' : 'menuitem'}
+              aria-checked={isToggle ? item.checked : undefined}
+              onClick={() => {
+                item.onSelect()
+                onClose()
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] text-ink-200 transition-colors hover:bg-white/[0.06] hover:text-ink-50 focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-300/40"
+            >
+              {isToggle ? (
+                <span
+                  className={`shrink-0 font-mono text-[11px] ${item.checked ? 'text-amber-200' : 'text-transparent'}`}
+                  aria-hidden
+                >
+                  ✓
+                </span>
+              ) : (
+                item.icon && (
+                  <span className="shrink-0 text-ink-400" aria-hidden>
+                    {item.icon}
+                  </span>
+                )
+              )}
+              <span className="min-w-0 flex-1 truncate">{item.label}</span>
+              {item.hint && (
+                <span className="font-mono text-[10px] text-ink-500">{item.hint}</span>
+              )}
+            </button>
+          </div>
+        )
+      })}
     </div>
   )
 }
