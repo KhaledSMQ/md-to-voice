@@ -6,6 +6,7 @@ const EMPTY: ParsedDocument = {
   words: [],
   chunks: [],
   outline: [],
+  resolvedFormat: 'markdown',
 }
 
 /**

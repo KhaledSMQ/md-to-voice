@@ -81,17 +81,14 @@ after`)
 })
 
 describe('plainTextToMdast', () => {
-  it('keeps pipes and spaces as literal text with hard breaks', () => {
+  it('keeps pipes and newlines as a single literal text node', () => {
     const tree = plainTextToMdast('| a | b |\n| x | y |')
     expect(tree.children).toHaveLength(1)
     const para = tree.children[0]!
     expect(para.type).toBe('paragraph')
     if (para.type !== 'paragraph') return
-    expect(para.children).toEqual([
-      { type: 'text', value: '| a | b |' },
-      { type: 'break' },
-      { type: 'text', value: '| x | y |' },
-    ])
+    // Newlines stay in the text; parseDocument wraps the block in <pre>.
+    expect(para.children).toEqual([{ type: 'text', value: '| a | b |\n| x | y |' }])
   })
 })
 

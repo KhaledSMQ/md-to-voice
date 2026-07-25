@@ -826,6 +826,21 @@ body {
     margin: 1.1em 0;
   }
 
+  /* Plain-text docs: monospace grid without the fenced-code chrome. */
+  .markdown-body pre.plain-text-doc {
+    margin: 0;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    overflow-x: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: inherit;
+    line-height: inherit;
+    white-space: pre;
+    color: inherit;
+  }
+
   .markdown-body pre code {
     background: transparent;
     padding: 0;
