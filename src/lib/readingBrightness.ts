@@ -163,12 +163,16 @@ export function readingBrightnessCssVars(
   const { bg, fg } = adjustPaperInk(preset, brightness)
   const heading = mixHex(fg, bg, 0.12)
   const muted = mixHex(fg, bg, 0.38)
+  // Spoken (already-read) words dim proportionally with the live ink so
+  // their contrast never collapses when the page light moves.
+  const spoken = mixHex(fg, bg, 0.3)
   return {
     '--reader-bg': bg,
     '--reader-fg': fg,
     '--reader-heading': heading,
     '--reader-muted': muted,
     '--reader-quote-fg': muted,
+    '--reader-word-spoken': spoken,
   }
 }
 

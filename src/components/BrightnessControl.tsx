@@ -55,7 +55,7 @@ export function BrightnessControl({ value, onChange, readingPreset }: Props) {
           >
             <span
               className="select-none text-[17px] font-semibold leading-none tracking-tight"
-              style={{ fontFamily: 'Literata, Georgia, serif' }}
+              style={{ fontFamily: "'Literata Variable', Literata, Georgia, serif" }}
             >
               Aa
             </span>

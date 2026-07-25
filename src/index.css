@@ -555,17 +555,24 @@ body {
     --reader-word-active-bg: #d4b078;
     --reader-word-active-fg: #1a1612;
     --reader-word-active-ring: rgba(212, 176, 120, 0.38);
-    --reader-word-spoken: #8a8070;
+    --reader-word-spoken: #8f8576;
     --reader-selection: rgba(196, 160, 106, 0.26);
     --reader-search: rgba(196, 160, 106, 0.18);
     --reader-search-current: rgba(196, 160, 106, 0.34);
-    --reader-font: 'Literata', ui-serif, 'Iowan Old Style', Palatino, Georgia, serif;
+    --reader-font: 'Literata Variable', 'Literata', ui-serif, 'Iowan Old Style', Palatino, Georgia, serif;
     --reader-mono: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, monospace;
     --reader-leading: 1.75;
     --reader-tracking: 0.006em;
     --reader-paragraph-gap: 0.95em;
+    /* Light-on-dark halation thins strokes; a small weight bump restores
+       apparent stroke width (grade compensation). Variable fonts render it
+       exactly; static faces fall back to 400. */
+    --reader-body-weight: 420;
     background: var(--reader-bg);
     color: var(--reader-fg);
+    /* Grayscale AA suits light-on-dark; light presets reset to subpixel. */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     transition: background-color 240ms ease, color 240ms ease;
   }
 
@@ -582,13 +589,17 @@ body {
     --reader-quote-fg: #5e5246;
     --reader-table-head: rgba(74, 63, 53, 0.06);
     --reader-word-hover: rgba(122, 78, 46, 0.1);
+    /* Dark ink on the amber chip (like night/day) — white-on-amber sat at 3.4:1. */
     --reader-word-active-bg: #b87a4e;
-    --reader-word-active-fg: #fff8f0;
+    --reader-word-active-fg: #241608;
     --reader-word-active-ring: rgba(184, 122, 78, 0.32);
-    --reader-word-spoken: #7a6e60;
+    --reader-word-spoken: #6f6355;
     --reader-selection: rgba(184, 122, 78, 0.22);
     --reader-search: rgba(184, 122, 78, 0.16);
     --reader-search-current: rgba(184, 122, 78, 0.3);
+    --reader-body-weight: 400;
+    -webkit-font-smoothing: auto;
+    -moz-osx-font-smoothing: auto;
   }
 
   .reader-preview[data-reading-preset='day'] {
@@ -607,10 +618,13 @@ body {
     --reader-word-active-bg: #d4a84b;
     --reader-word-active-fg: #1a1608;
     --reader-word-active-ring: rgba(212, 168, 75, 0.32);
-    --reader-word-spoken: #72726c;
+    --reader-word-spoken: #686862;
     --reader-selection: rgba(58, 95, 138, 0.16);
     --reader-search: rgba(58, 95, 138, 0.12);
     --reader-search-current: rgba(58, 95, 138, 0.24);
+    --reader-body-weight: 400;
+    -webkit-font-smoothing: auto;
+    -moz-osx-font-smoothing: auto;
   }
 
   .reader-preview[data-reading-preset='contrast'] {
@@ -709,15 +723,17 @@ body {
   .markdown-body {
     font-family: var(--reader-font);
     font-size: var(--reader-font-size, 1.1875rem);
+    font-weight: var(--reader-body-weight, 400);
     line-height: var(--reader-leading, 1.72);
     letter-spacing: var(--reader-tracking, 0.005em);
     color: var(--reader-fg, #d6cdb8);
+    /* Let the opsz axis track the actual size (14–32px) — a pinned
+       'opsz' in font-variation-settings would override this. */
     font-optical-sizing: auto;
-    font-variation-settings: 'opsz' 18;
     text-rendering: optimizeLegibility;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
     hyphens: auto;
+    /* Avoid over-hyphenation: ≥6-letter words, ≥3 chars around the break. */
+    hyphenate-limit-chars: 6 3 3;
     overflow-wrap: break-word;
   }
 
@@ -782,6 +798,8 @@ body {
   .markdown-body p {
     line-height: inherit;
     margin: var(--reader-paragraph-gap, 0.95em) 0;
+    /* Even out rag and avoid single-word last lines where supported. */
+    text-wrap: pretty;
   }
 
   .markdown-body ul,
@@ -795,6 +813,9 @@ body {
   }
   .markdown-body ol {
     list-style: decimal;
+  }
+  .markdown-body li {
+    text-wrap: pretty;
   }
   .markdown-body li + li {
     margin-top: 0.28em;
@@ -939,7 +960,7 @@ body {
 
   .studio-app-wordmark {
     @apply overflow-hidden whitespace-nowrap text-[15px] font-semibold tracking-tight text-ink-100;
-    font-family: 'Literata', Georgia, 'Times New Roman', serif;
+    font-family: 'Literata Variable', 'Literata', Georgia, 'Times New Roman', serif;
     max-width: 9rem;
     margin-left: 0.5rem;
     opacity: 1;
