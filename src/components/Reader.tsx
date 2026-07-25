@@ -8,7 +8,6 @@ import {
   type ChangeEvent,
   type ReactNode,
 } from 'react'
-import { createPortal } from 'react-dom'
 import { MarkdownReader, type MarkdownReaderHandle, type PlayheadVisibility, type PreviewContextInfo } from './MarkdownReader'
 import { Controls } from './Controls'
 import { ColumnResizeHandle } from './ColumnResizeHandle'
@@ -26,6 +25,7 @@ import { TeleprompterOverlay } from './TeleprompterOverlay'
 import { ShortcutsHelp } from './ShortcutsHelp'
 import { ReaderHud } from './ReaderHud'
 import { MiniTransport } from './MiniTransport'
+import { FocusMiniPlayer } from './FocusMiniPlayer'
 import { AppMetaFooter } from './AppMetaFooter'
 import { BookmarksMenu } from './BookmarksMenu'
 import { MobileStudioSheet, MOBILE_PEEK_HEIGHT_PX } from './MobileStudioSheet'
@@ -1391,13 +1391,6 @@ export function Reader({
         if (next && next.id !== ctx.activeDocId) ctx.onSelectDocument(next.id)
         return
       }
-      if (isMod && !e.altKey && e.key >= '1' && e.key <= '9') {
-        const doc = ctx.sortedDocuments[Number(e.key) - 1]
-        if (!doc) return
-        e.preventDefault()
-        if (doc.id !== ctx.activeDocId) ctx.onSelectDocument(doc.id)
-        return
-      }
       if (isMod && (e.key === 'v' || e.key === 'V')) {
         if (inField || ctx.inlineEdit || ctx.showTeleprompter) return
         e.preventDefault()
@@ -1894,24 +1887,20 @@ export function Reader({
       </div>
       </div>
 
-      {showFocusMini &&
-        createPortal(
-          <div className="focus-mini-player" role="region" aria-label="Focus mini player">
-            <MiniTransport
-              status={player.status}
-              totalChunks={parsed.chunks.length}
-              totalWords={parsed.words.length}
-              activeWordStore={activeWordStore}
-              onPlay={player.play}
-              onPause={player.pause}
-              onStop={handleStop}
-              onPrevChunk={() => void player.skipChunk(-1)}
-              onNextChunk={() => void player.skipChunk(1)}
-              onExpand={() => setFocusMode(false)}
-            />
-          </div>,
-          document.body,
-        )}
+      {showFocusMini && (
+        <FocusMiniPlayer
+          status={player.status}
+          totalChunks={parsed.chunks.length}
+          totalWords={parsed.words.length}
+          activeWordStore={activeWordStore}
+          onPlay={player.play}
+          onPause={player.pause}
+          onStop={handleStop}
+          onPrevChunk={() => void player.skipChunk(-1)}
+          onNextChunk={() => void player.skipChunk(1)}
+          onExpand={() => setFocusMode(false)}
+        />
+      )}
 
       {!isDesktop && (
         <MobileStudioSheet

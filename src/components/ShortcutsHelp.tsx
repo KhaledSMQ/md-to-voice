@@ -28,7 +28,6 @@ const SHORTCUTS: ShortcutRow[] = [
   { keys: ['⌘', 'Scroll'], join: 'chord', action: 'Zoom preview text' },
   { keys: ['⌘', '⇧', 'Scroll'], join: 'chord', action: 'Adjust line width' },
   { keys: ['⌘', '0'], join: 'chord', action: 'Reset zoom & line width' },
-  { keys: ['⌘', '1–9'], join: 'chord', action: 'Open recent document' },
   { keys: ['⌘', '⌥', '↑', '↓'], join: 'chord', action: 'Cycle recent documents' },
   { keys: ['?'], action: 'Show this help' },
 ]
